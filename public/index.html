@@ -10,17 +10,16 @@
 </head>
 <body>
 
-  <!-- ═══════ SPLASH / LOGIN ═══════ -->
   <div id="screen-login" class="screen active">
     <div class="login-container">
       <div class="login-glow"></div>
       <div class="login-icon">🎵</div>
-      <h1>Concert <span class="accent">Alert</h1>
+      <h1>Concert <span class="accent">Alert</span></h1>
       <p class="subtitle">Ne rate plus jamais un concert de tes artistes favoris</p>
       <div class="features-grid">
         <div class="feature">
           <span class="feature-icon">🔍</span>
-          <span>Scanne tes playlists Spotify</span>
+          <span>Entre les noms de tes artistes</span>
         </div>
         <div class="feature">
           <span class="feature-icon">🔔</span>
@@ -35,38 +34,56 @@
           <span>Lieu, date & taille de salle</span>
         </div>
       </div>
-      <a href="/login" class="btn-spotify">
-        <svg viewBox="0 0 24 24" width="24" height="24"><path fill="#000" d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-        Se connecter avec Spotify
-      </a>
-      <p class="privacy-note">Nous n'accédons qu'à tes playlists. Aucune donnée n'est stockée.</p>
+      <button class="btn-start" onclick="showScreen('screen-artists')">
+        Commencer
+      </button>
+      <p class="privacy-note">Aucun compte requis. Tu tapes tes artistes, on trouve les concerts.</p>
     </div>
   </div>
 
-  <!-- ═══════ PLAYLIST SELECTION ═══════ -->
-  <div id="screen-playlists" class="screen">
+  <div id="screen-artists" class="screen">
     <header class="topbar">
       <div class="topbar-left">
         <span class="logo-small">🎵</span>
         <span class="logo-text">Concert <span class="accent">Alert</span></span>
       </div>
-      <div class="topbar-right">
-        <span id="user-name" class="user-badge"></span>
-        <button id="btn-logout" class="btn-sm btn-outline" onclick="logout()">Déconnexion</button>
-      </div>
     </header>
     <div class="content">
-      <h2>Sélectionne tes playlists</h2>
-      <p class="hint">Choisis les playlists dont tu veux extraire les artistes</p>
-      <div id="playlists-grid" class="playlists-grid"></div>
-      <div id="playlists-loading" class="loading">
-        <div class="spinner"></div>
-        <p>Chargement de tes playlists...</p>
+      <h2>Ajoute tes artistes</h2>
+      <p class="hint">Tape le nom d'un artiste et clique "Ajouter" (ou Entrée)</p>
+      <div class="artist-input-area">
+        <div class="input-row">
+          <input type="text" id="artist-input" placeholder="Ex: SCH, Dua Lipa, Coldplay..." onkeydown="if(event.key==='Enter')addArtist()">
+          <button class="btn-add" onclick="addArtist()">+ Ajouter</button>
+        </div>
+        <div id="artist-tags" class="artist-tags"></div>
+      </div>
+      <div class="artist-suggestions">
+        <p class="hint">Artistes populaires :</p>
+        <div class="suggestion-chips">
+          <button class="chip" onclick="addArtistDirect('Dua Lipa')">Dua Lipa</button>
+          <button class="chip" onclick="addArtistDirect('Coldplay')">Coldplay</button>
+          <button class="chip" onclick="addArtistDirect('Billie Eilish')">Billie Eilish</button>
+          <button class="chip" onclick="addArtistDirect('Kendrick Lamar')">Kendrick Lamar</button>
+          <button class="chip" onclick="addArtistDirect('SCH')">SCH</button>
+          <button class="chip" onclick="addArtistDirect('Damso')">Damso</button>
+          <button class="chip" onclick="addArtistDirect('Drake')">Drake</button>
+          <button class="chip" onclick="addArtistDirect('Travis Scott')">Travis Scott</button>
+          <button class="chip" onclick="addArtistDirect('Imagine Dragons')">Imagine Dragons</button>
+          <button class="chip" onclick="addArtistDirect('Post Malone')">Post Malone</button>
+          <button class="chip" onclick="addArtistDirect('Maitre Gims')">Maitre Gims</button>
+          <button class="chip" onclick="addArtistDirect('Booba')">Booba</button>
+        </div>
+      </div>
+      <div class="search-bar-container">
+        <button class="btn-analyze" id="btn-search" onclick="searchConcerts()" disabled>
+          Rechercher les concerts
+        </button>
+        <span id="artist-count" style="color:var(--text-dim);font-size:14px"></span>
       </div>
     </div>
   </div>
 
-  <!-- ═══════ ARTISTS & CONCERTS ═══════ -->
   <div id="screen-alerts" class="screen">
     <header class="topbar">
       <div class="topbar-left">
@@ -75,23 +92,22 @@
       </div>
       <div class="topbar-right">
         <span id="alerts-count" class="alerts-badge"></span>
-        <button class="btn-sm btn-outline" onclick="showScreen('screen-playlists')">← Playlists</button>
-        <button class="btn-sm btn-outline" onclick="logout()">Déconnexion</button>
+        <button class="btn-sm btn-outline" onclick="showScreen('screen-artists')">← Artistes</button>
       </div>
     </header>
     <div class="content">
       <div class="section-header">
         <div>
-          <h2>Artistes détectés</h2>
+          <h2>Concerts trouvés</h2>
           <p class="hint" id="artist-summary"></p>
         </div>
         <div class="search-box">
-          <input type="text" id="search-artist" placeholder="Rechercher un artiste..." oninput="filterConcerts(this.value)">
+          <input type="text" id="search-artist" placeholder="Filtrer..." oninput="filterConcerts(this.value)">
         </div>
       </div>
-      <div id="artists-loading" class="loading">
+      <div id="artists-loading" class="loading" style="display:none">
         <div class="spinner"></div>
-        <p>Recherche de concerts en cours...</p>
+        <p id="loading-text">Recherche de concerts en cours...</p>
         <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
       </div>
       <div id="concerts-container" class="concerts-list"></div>
@@ -103,16 +119,7 @@
     </div>
   </div>
 
-  <!-- ═══════ NOTIFICATION TOAST ═══════ -->
   <div id="toast-container" class="toast-container"></div>
-
-  <!-- ═══════ MODAL ═══════ -->
-  <div id="modal-overlay" class="modal-overlay" onclick="closeModal()">
-    <div class="modal" onclick="event.stopPropagation()">
-      <button class="modal-close" onclick="closeModal()">✕</button>
-      <div id="modal-content"></div>
-    </div>
-  </div>
 
   <script src="app.js"></script>
 </body>
