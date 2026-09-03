@@ -80,7 +80,37 @@ app.get('/callback', async function(req, res) {
   }
 });
 
-// CONCERT SEARCH
+// SPOTIFY ARTIST SEARCH (pour trouver le bon nom avant de chercher les concerts)
+
+async function searchSpotifyArtist(artistName) {
+  if (!SPOTIFY_CLIENT_ID) return null;
+  try {
+    var tokenRes = await axios.post('https://accounts.spotify.com/api/token',
+      'grant_type=client_credentials',
+      {
+        headers: {
+          'Authorization': 'Basic ' + base64Encode(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+    var token = tokenRes.data.access_token;
+    var searchRes = await axios.get('https://api.spotify.com/v1/search', {
+      params: { q: artistName, type: 'artist', limit: 5 },
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    var artists = searchRes.data.artists && searchRes.data.artists.items;
+    if (!artists || artists.length === 0) return null;
+    var n = normalize(artistName);
+    var best = artists.find(function(a) { return normalize(a.name) === n; });
+    if (!best) best = artists.find(function(a) { return normalize(a.name).indexOf(n) > -1 || n.indexOf(normalize(a.name)) > -1; });
+    if (!best) best = artists[0];
+    return { name: best.name, id: best.id, genres: best.genres || [], popularity: best.popularity };
+  } catch (err) {
+    return null;
+  }
+}
+
+// CONCERT SEARCH - TICKETMASTER
 
 async function searchTicketmaster(artistName) {
   if (!TICKETMASTER_API_KEY) return [];
@@ -126,11 +156,19 @@ async function searchTicketmaster(artistName) {
   }
 }
 
+// CONCERT SEARCH - BANDSINTOWN
+
 async function searchBandsintown(artistName) {
   var encoded = encodeURIComponent(artistName);
   var url = 'https://rest.bandsintown.com/artists/' + encoded + '/events?app_id=' + BANDSINTOWN_APP_ID;
   try {
-    var response = await axios.get(url, { timeout: 10000 });
+    var response = await axios.get(url, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'ConcertAlert/1.0',
+        'Accept': 'application/json',
+      },
+    });
     if (!Array.isArray(response.data)) return [];
     return response.data
       .filter(function(e) { return e.upcoming; })
@@ -156,25 +194,70 @@ async function searchBandsintown(artistName) {
         };
       });
   } catch (err) {
-    console.error('Bandsintown error for ' + artistName + ':', err.message);
+    console.error('Bandsintown error for ' + artistName + ':', err.response ? err.response.status : '', err.message);
     return [];
   }
 }
+
+// CONCERT SEARCH - SONGKICK (gratuit, bon pour la France)
+
+async function searchSongkick(artistName) {
+  try {
+    var searchRes = await axios.get('https://api.songkick.com/api/3.0/search/artists.json', {
+      params: { apikey: process.env.SONGKICK_API_KEY || '', query: artistName },
+      timeout: 10000,
+    });
+    var results = searchRes.data && searchRes.data.resultsPage && searchRes.data.resultsPage.results && searchRes.data.resultsPage.results.artist;
+    if (!results || results.length === 0) return [];
+    var n = normalize(artistName);
+    var best = results.find(function(a) { return normalize(a.displayName) === n; });
+    if (!best) best = results.find(function(a) { return normalize(a.displayName).indexOf(n) > -1; });
+    if (!best) return [];
+    var eventsRes = await axios.get('https://api.songkick.com/api/3.0/artists/' + best.id + '/upcoming.json', {
+      params: { apikey: process.env.SONGKICK_API_KEY || '' },
+      timeout: 10000,
+    });
+    var events = eventsRes.data && eventsRes.data.resultsPage && eventsRes.data.resultsPage.results && eventsRes.data.resultsPage.results.event;
+    if (!events || !Array.isArray(events)) return [];
+    var now = new Date();
+    return events
+      .filter(function(e) { return new Date(e.start && e.start.date) >= now; })
+      .map(function(e) {
+        var venue = e.venue || {};
+        return {
+          artist: artistName,
+          date: (e.start && e.start.datetime) || (e.start && e.start.date) || '',
+          venue: venue.displayName || 'Salle inconnue',
+          city: (e.location && e.location.city) || '',
+          country: (e.location && e.location.country && e.location.country.displayName) || '',
+          latitude: venue.lat,
+          longitude: venue.lng,
+          ticketUrl: e.uri || '',
+          lineup: [],
+          source: 'Songkick',
+        };
+      });
+  } catch (err) {
+    console.error('Songkick error for ' + artistName + ':', err.message);
+    return [];
+  }
+}
+
+// RECHERCHE GLOBALE
 
 async function searchConcertsForArtist(artistName) {
   var results = await Promise.all([
     searchTicketmaster(artistName),
     searchBandsintown(artistName),
+    searchSongkick(artistName),
   ]);
-  var tm = results[0];
-  var bit = results[1];
-  var combined = tm.concat(bit);
+  var all = results[0].concat(results[1]).concat(results[2]);
 
   var seen = {};
   var unique = [];
-  for (var i = 0; i < combined.length; i++) {
-    var c = combined[i];
-    var key = c.date + '-' + normalize(c.venue);
+  for (var i = 0; i < all.length; i++) {
+    var c = all[i];
+    var key = (c.date || '').slice(0, 10) + '-' + normalize(c.venue);
     if (seen[key]) continue;
     seen[key] = true;
     unique.push(c);
@@ -186,6 +269,8 @@ async function searchConcertsForArtist(artistName) {
 
   return unique;
 }
+
+// ROUTES
 
 app.get('/api/concerts/:artist', async function(req, res) {
   var artist = decodeURIComponent(req.params.artist);
