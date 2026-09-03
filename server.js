@@ -102,7 +102,7 @@ app.get('/api/playlists', async (req, res) => {
     }
     res.json({ playlists });
   } catch (err) {
-    console.error('Error fetching playlists:', err.response?.status, err.message);
+    console.error('SPOTIFY ERROR /api/playlists:', 'status=', err.response?.status, '| message=', err.response?.data?.error?.message, '| raw=', JSON.stringify(err.response?.data).slice(0, 400), '| http=', err.message);
     res.status(500).json({ error: 'Failed to fetch playlists' });
   }
 });
@@ -138,7 +138,7 @@ app.get('/api/playlists/:id/artists', async (req, res) => {
     const artists = Array.from(artistsMap.values()).sort((a, b) => b.trackCount - a.trackCount);
     res.json({ artists });
   } catch (err) {
-    console.error('Error fetching artists:', err.message);
+    console.error('SPOTIFY ERROR /api/playlists/:id/artists:', 'status=', err.response?.status, '| message=', err.response?.data?.error?.message, '| raw=', JSON.stringify(err.response?.data).slice(0, 400), '| http=', err.message);
     res.status(500).json({ error: 'Failed to fetch artists' });
   }
 });
