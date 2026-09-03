@@ -144,9 +144,74 @@ app.get('/api/playlists/:id/artists', async (req, res) => {
 
 // ─── CONCERT SEARCH (Bandsintown) ───
 
-async function searchConcertsForArtist(artistName) {
+// ─── CONCERT SEARCH (Bandsintown + Ticketmaster) ───
+
+// Grandes salles françaises prioritaires
+const FRENCH_MAJOR_VENUES = [
+  'Stade de France', 'Orange Vélodrome', 'La Défense Arena', 'Accor Arena',
+  'Zenith', 'Le Zénith', 'Adidas Arena', 'Dock Pullman', 'Paris La Défense Arena',
+  'Le Dôme de Paris', 'La Seine Musicale', 'Halle Tony Garnier', 'LDLC Arena',
+  'Arkéa Arena', 'Zenith de Paris', 'Le Grand Rex', 'Parc des Princes',
+  'Groupama Stadium', 'Parc OL', 'Stade Pierre-Mauroy', 'Matmut Atlantique',
+  'Allianz Riviera', 'Roazhon Park', 'Fnac Live', 'E.Leclerc', 'Espace Fnac',
+];
+
+function normalize(str = '') {
+  return String(str).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim();
+}
+
+function isMajorFrenchVenue(venueName, country) {
+  const v = normalize(venueName);
+  const c = normalize(country);
+  if (c && c.includes('france')) return true;
+  return FRENCH_MAJOR_VENUES.some(vn => {
+    const n = normalize(vn);
+    return v.includes(n) || n.includes(v.split(' ').slice(0, 2).join(' '));
+  });
+}
+
+async function searchTicketmaster(artistName) {
+  if (!TICKETMASTER_API_KEY) return [];
+  try {
+    const response = await axios.get('https://app.ticketmaster.com/discovery/v2/events.json', {
+      params: {
+        apikey: TICKETMASTER_API_KEY,
+        keyword: artistName,
+        size: 50,
+        sort: 'date,asc',
+      },
+      timeout: 10000,
+    });
+    const events = response.data?._embedded?.events || [];
+    const now = new Date();
+    return events
+      .filter(e => {
+        const d = new Date(e.dates?.start?.dateTime || e.dates?.start?.localDate);
+        return d >= now;
+      })
+      .map(e => ({
+        artist: artistName,
+        date: e.dates?.start?.dateTime || e.dates?.start?.localDate || '',
+        venue: e._embedded?.venues?.[0]?.name || 'Unknown venue',
+        city: e._embedded?.venues?.[0]?.city?.name || '',
+        country: e._embedded?.venues?.[0]?.country?.countryCode || '',
+        region: e._embedded?.venues?.[0]?.state?.stateCode || '',
+        latitude: e._embedded?.venues?.[0]?.location?.latitude,
+        longitude: e._embedded?.venues?.[0]?.location?.longitude,
+        ticketUrl: e.url || '',
+        ticketType: e.promoter ? 'Ticketmaster' : '',
+        lineup: e._embedded?.attractions?.map(a => a.name) || [],
+        source: 'Ticketmaster',
+      }));
+  } catch (err) {
+    console.error(`Ticketmaster error for ${artistName}:`, err.response?.status, err.message);
+    return [];
+  }
+}
+
+async function searchBandsintown(artistName) {
   const encoded = encodeURIComponent(artistName);
-  const url = `https://rest.bandsintown.com/artists/${encoded}/events?app_id=${BANDSINTOWN_APP_ID}`;
+  const url = `https://rest.bandsintown.com/artists/${encoded}/events?app_id=${process.env.BANDSINTOWN_APP_ID || 'concert-alert'}`;
   try {
     const response = await axios.get(url, { timeout: 10000 });
     if (!Array.isArray(response.data)) return [];
@@ -165,45 +230,78 @@ async function searchConcertsForArtist(artistName) {
         region: e.venue?.region || '',
         latitude: e.venue?.latitude,
         longitude: e.venue?.longitude,
-        ticketUrl: e.url,
+        ticketUrl: e.url || '',
         ticketType: e.description || '',
         lineup: e.lineup || [],
-      }))
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+        source: 'Bandsintown',
+      }));
   } catch (err) {
     console.error(`Bandsintown error for ${artistName}:`, err.message);
     return [];
   }
 }
 
-// Venue capacity approximation from Songkick or Ticketmaster
+// Capacité approximative (Songkick, si clé fournie)
 async function getVenueCapacity(venueName, city) {
   try {
+    if (!process.env.SONGKICK_API_KEY) return null;
     const response = await axios.get(
-      `https://www.songkick.com/api/3.0/search/venues.json`, {
-        params: {
-          apikey: process.env.SONGKICK_API_KEY || '',
-          query: `${venueName} ${city}`,
-        },
+      'https://www.songkick.com/api/3.0/search/venues.json', {
+        params: { apikey: process.env.SONGKICK_API_KEY, query: `${venueName} ${city}` },
         timeout: 5000,
       }
     );
     if (response.data?.resultsPage?.results?.venue?.[0]) {
-      return response.data.resultsPage.results.venue[0].capacity || null;
+      const cap = response.data.resultsPage.results.venue[0].capacity;
+      return typeof cap === 'number' ? cap : null;
     }
   } catch (e) {}
   return null;
 }
 
+async function searchConcertsForArtist(artistName) {
+  const [tm, bit] = await Promise.all([
+    searchTicketmaster(artistName),
+    searchBandsintown(artistName),
+  ]);
+  const combined = [...tm, ...bit];
+
+  const seen = new Set();
+  const unique = [];
+  for (const c of combined) {
+    const key = `${c.date}-${normalize(c.venue)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(c);
+  }
+
+  const LIMIT = 30;
+  let count = 0;
+  for (const c of unique) {
+    if (count >= LIMIT) break;
+    if (isMajorFrenchVenue(c.venue, c.country)) {
+      c.capacity = await getVenueCapacity(c.venue, c.city);
+      count++;
+    }
+  }
+
+  return unique
+    .map(c => ({ ...c, isFrance: isMajorFrenchVenue(c.venue, c.country) }))
+    .sort((a, b) => {
+      if (a.isFrance !== b.isFrance) return a.isFrance ? -1 : 1;
+      return new Date(a.date) - new Date(b.date);
+    });
+}
+
 app.get('/api/concerts', async (req, res) => {
-  const { artists, token } = req.query;
+  const { artists } = req.query;
   if (!artists) return res.status(400).json({ error: 'No artists specified' });
 
   const artistList = artists.split(',').map(a => a.trim()).filter(Boolean);
   const allConcerts = [];
 
   for (const artist of artistList) {
-    const cacheKey = `${artist}_${USER_CITY}`;
+    const cacheKey = `${artist}`;
     const cached = concertCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) {
       allConcerts.push(...cached.concerts);
@@ -225,7 +323,6 @@ app.get('/api/concerts/:artist', async (req, res) => {
   const concerts = await searchConcertsForArtist(artist);
   res.json({ concerts });
 });
-
 // ─── POLLING STATUS ───
 
 app.get('/api/health', (req, res) => {
