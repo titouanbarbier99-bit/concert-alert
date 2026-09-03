@@ -31,20 +31,16 @@ function normalize(str) {
   return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim();
 }
 
-function isFrance(country) {
-  var c = normalize(country);
-  return c === 'fr' || c === 'france' || c.indexOf('france') > -1;
-}
-
 function artistMatchesEvent(artistName, event) {
   var n = normalize(artistName);
   var eventName = normalize(event.name || '');
   var lineup = (event.lineup || []).map(function(a) { return normalize(a); }).join(' ');
   var attractions = ((event._embedded && event._embedded.attractions) || []).map(function(a) { return normalize(a.name); }).join(' ');
-  var all = eventName + ' ' + lineup + ' ' + attractions;
-  if (all.indexOf(n) > -1) return true;
-  var words = n.split(' ').filter(function(w) { return w.length > 2; });
-  return words.some(function(w) { return all.indexOf(w) > -1; });
+  if (eventName === n) return true;
+  if (lineup.indexOf(n) > -1) return true;
+  if (attractions.indexOf(n) > -1) return true;
+  if (eventName.indexOf(n) > -1) return true;
+  return false;
 }
 
 // SPOTIFY AUTH
@@ -85,7 +81,7 @@ app.get('/callback', async function(req, res) {
   }
 });
 
-// TICKETMASTER - FILTRE FRANCE
+// TICKETMASTER
 
 async function searchTicketmaster(artistName) {
   if (!TICKETMASTER_API_KEY) return [];
@@ -96,7 +92,6 @@ async function searchTicketmaster(artistName) {
         keyword: artistName,
         size: 50,
         classificationName: 'music',
-        countryCode: 'FR',
         sort: 'date,asc',
       },
       timeout: 10000,
@@ -118,7 +113,7 @@ async function searchTicketmaster(artistName) {
           date: (e.dates && e.dates.start && (e.dates.start.dateTime || e.dates.start.localDate)) || '',
           venue: venue.name || 'Salle inconnue',
           city: (venue.city && venue.city.name) || '',
-          country: 'FR',
+          country: (venue.country && venue.country.countryCode) || '',
           latitude: venue.location && venue.location.latitude,
           longitude: venue.location && venue.location.longitude,
           ticketUrl: e.url || '',
@@ -132,7 +127,7 @@ async function searchTicketmaster(artistName) {
   }
 }
 
-// BANDSINTOWN - FILTRE FRANCE
+// BANDSINTOWN
 
 async function searchBandsintown(artistName) {
   var encoded = encodeURIComponent(artistName);
@@ -149,9 +144,6 @@ async function searchBandsintown(artistName) {
         return new Date(e.datetime) >= new Date();
       })
       .filter(function(e) {
-        return isFrance(e.venue && e.venue.country);
-      })
-      .filter(function(e) {
         return artistMatchesEvent(artistName, { name: '', lineup: e.lineup || [] });
       })
       .map(function(e) {
@@ -160,115 +152,4 @@ async function searchBandsintown(artistName) {
           date: e.datetime,
           venue: (e.venue && e.venue.name) || 'Salle inconnue',
           city: (e.venue && e.venue.city) || '',
-          country: 'FR',
-          latitude: e.venue && e.venue.latitude,
-          longitude: e.venue && e.venue.longitude,
-          ticketUrl: e.url || '',
-          lineup: e.lineup || [],
-          source: 'Bandsintown',
-        };
-      });
-  } catch (err) {
-    console.error('Bandsintown error for ' + artistName + ':', err.response ? err.response.status : '', err.message);
-    return [];
-  }
-}
-
-// SONGKICK - FILTRE FRANCE
-
-async function searchSongkick(artistName) {
-  try {
-    var searchRes = await axios.get('https://api.songkick.com/api/3.0/search/artists.json', {
-      params: { apikey: process.env.SONGKICK_API_KEY || '', query: artistName },
-      timeout: 10000,
-    });
-    var results = searchRes.data && searchRes.data.resultsPage && searchRes.data.resultsPage.results && searchRes.data.resultsPage.results.artist;
-    if (!results || results.length === 0) return [];
-    var n = normalize(artistName);
-    var best = results.find(function(a) { return normalize(a.displayName) === n; });
-    if (!best) best = results.find(function(a) { return normalize(a.displayName).indexOf(n) > -1; });
-    if (!best) return [];
-    var eventsRes = await axios.get('https://api.songkick.com/api/3.0/artists/' + best.id + '/upcoming.json', {
-      params: { apikey: process.env.SONGKICK_API_KEY || '' },
-      timeout: 10000,
-    });
-    var events = eventsRes.data && eventsRes.data.resultsPage && eventsRes.data.resultsPage.results && eventsRes.data.resultsPage.results.event;
-    if (!events || !Array.isArray(events)) return [];
-    var now = new Date();
-    return events
-      .filter(function(e) { return new Date(e.start && e.start.date) >= now; })
-      .filter(function(e) {
-        return isFrance(e.location && e.location.country && e.location.country.displayName);
-      })
-      .map(function(e) {
-        var venue = e.venue || {};
-        return {
-          artist: artistName,
-          date: (e.start && e.start.datetime) || (e.start && e.start.date) || '',
-          venue: venue.displayName || 'Salle inconnue',
-          city: (e.location && e.location.city) || '',
-          country: 'FR',
-          latitude: venue.lat,
-          longitude: venue.lng,
-          ticketUrl: e.uri || '',
-          lineup: [],
-          source: 'Songkick',
-        };
-      });
-  } catch (err) {
-    console.error('Songkick error for ' + artistName + ':', err.message);
-    return [];
-  }
-}
-
-// RECHERCHE GLOBALE
-
-async function searchConcertsForArtist(artistName) {
-  var results = await Promise.all([
-    searchTicketmaster(artistName),
-    searchBandsintown(artistName),
-    searchSongkick(artistName),
-  ]);
-  var all = results[0].concat(results[1]).concat(results[2]);
-
-  var seen = {};
-  var unique = [];
-  for (var i = 0; i < all.length; i++) {
-    var c = all[i];
-    var key = (c.date || '').slice(0, 10) + '-' + normalize(c.venue);
-    if (seen[key]) continue;
-    seen[key] = true;
-    unique.push(c);
-  }
-
-  unique.sort(function(a, b) {
-    return new Date(a.date) - new Date(b.date);
-  });
-
-  return unique;
-}
-
-app.get('/api/concerts/:artist', async function(req, res) {
-  var artist = decodeURIComponent(req.params.artist);
-  var cacheKey = artist;
-  var cached = concertCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) {
-    return res.json({ concerts: cached.concerts });
-  }
-  var concerts = await searchConcertsForArtist(artist);
-  concertCache.set(cacheKey, { concerts: concerts, timestamp: Date.now() });
-  res.json({ concerts: concerts });
-});
-
-app.get('/api/health', function(req, res) {
-  res.json({ status: 'ok', cacheSize: concertCache.size, uptime: process.uptime() });
-});
-
-app.get('*', function(req, res) {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-var server = http.createServer(app);
-server.listen(PORT, function() {
-  console.log('Concert Alert running at http://localhost:' + PORT);
-});
+          country: (
