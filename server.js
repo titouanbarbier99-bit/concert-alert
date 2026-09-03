@@ -40,7 +40,7 @@ function base64Encode(str) {
 
 app.get('/login', (req, res) => {
   const state = generateRandomString(16);
-  const scope = 'playlist-read-private playlist-read-collaborative';
+  const scope = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email';
   const authUrl = new URL('https://accounts.spotify.com/authorize');
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('client_id', SPOTIFY_CLIENT_ID);
