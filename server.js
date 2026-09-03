@@ -18,6 +18,7 @@ const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
 const BANDSINTOWN_APP_ID = process.env.BANDSINTOWN_APP_ID || 'concert-alert';
 const TICKETMASTER_API_KEY = process.env.TICKETMASTER_API_KEY || '';
+const TICKETMASTER_API_KEY = process.env.TICKETMASTER_API_KEY || '';
 const USER_COUNTRY = process.env.USER_COUNTRY || 'France';
 const USER_CITY = process.env.USER_CITY || 'Paris';
 
