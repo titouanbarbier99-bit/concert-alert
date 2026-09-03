@@ -2,17 +2,15 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
-const fs = require('fs');
 const http = require('http');
-const https = require('https');
 const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const USE_HTTPS = process.env.USE_HTTPS === 'true';
-const HTTPS_PFX = process.env.HTTPS_PFX;
-const HTTPS_PASSPHRASE = process.env.HTTPS_PASSPHRASE;
 
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:' + PORT + '/callback';
 const TICKETMASTER_API_KEY = process.env.TICKETMASTER_API_KEY || '';
 const BANDSINTOWN_APP_ID = process.env.BANDSINTOWN_APP_ID || 'concert-alert';
 
@@ -20,6 +18,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 let concertCache = new Map();
+
+function generateRandomString(length) {
+  return crypto.randomBytes(length).toString('hex').slice(0, length);
+}
+
+function base64Encode(str) {
+  return Buffer.from(str).toString('base64');
+}
 
 function normalize(str) {
   return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim();
@@ -35,6 +41,46 @@ function artistMatchesEvent(artistName, event) {
   var words = n.split(' ').filter(function(w) { return w.length > 2; });
   return words.some(function(w) { return all.indexOf(w) > -1; });
 }
+
+// SPOTIFY AUTH
+
+app.get('/login', function(req, res) {
+  var state = generateRandomString(16);
+  var scope = 'user-top-read user-read-recently-played user-read-email';
+  var authUrl = 'https://accounts.spotify.com/authorize' +
+    '?response_type=code' +
+    '&client_id=' + encodeURIComponent(SPOTIFY_CLIENT_ID) +
+    '&scope=' + encodeURIComponent(scope) +
+    '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
+    '&state=' + state +
+    '&show_dialog=true';
+  res.redirect(authUrl);
+});
+
+app.get('/callback', async function(req, res) {
+  var code = req.query.code;
+  if (!code) return res.redirect('/?error=auth_denied');
+  try {
+    var tokenResponse = await axios.post('https://accounts.spotify.com/api/token',
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: REDIRECT_URI,
+      }), {
+        headers: {
+          'Authorization': 'Basic ' + base64Encode(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+    var access_token = tokenResponse.data.access_token;
+    res.redirect('/?token=' + encodeURIComponent(access_token) + '#authenticated');
+  } catch (err) {
+    console.error('Auth callback error:', err.message);
+    res.redirect('/?error=token_failed');
+  }
+});
+
+// CONCERT SEARCH
 
 async function searchTicketmaster(artistName) {
   if (!TICKETMASTER_API_KEY) return [];
@@ -154,26 +200,14 @@ app.get('/api/concerts/:artist', async function(req, res) {
 });
 
 app.get('/api/health', function(req, res) {
-  res.json({
-    status: 'ok',
-    cacheSize: concertCache.size,
-    uptime: process.uptime(),
-  });
+  res.json({ status: 'ok', cacheSize: concertCache.size, uptime: process.uptime() });
 });
 
 app.get('*', function(req, res) {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-var protocol = USE_HTTPS ? 'https' : 'http';
-var server;
-if (USE_HTTPS) {
-  var pfxPath = HTTPS_PFX || path.join(__dirname, 'cert', 'concert.pfx');
-  server = https.createServer({ pfx: fs.readFileSync(pfxPath), passphrase: HTTPS_PASSPHRASE || 'concert' }, app);
-} else {
-  server = http.createServer(app);
-}
-
+var server = http.createServer(app);
 server.listen(PORT, function() {
-  console.log('Concert Alert running at ' + protocol + '://localhost:' + PORT);
+  console.log('Concert Alert running at http://localhost:' + PORT);
 });
