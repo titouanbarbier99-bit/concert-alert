@@ -88,14 +88,15 @@ app.get('/api/playlists', async (req, res) => {
       const response = await axios.get(url, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      playlists.push(...response.data.items.map(p => ({
+            const items = Array.isArray(response.data.items) ? response.data.items : [];
+      playlists.push(...items.map(p => ({
         id: p.id,
         name: p.name,
         image: p.images?.[0]?.url,
-        trackCount: p.tracks.total,
-        owner: p.owner.display_name,
+        trackCount: (p.tracks && typeof p.tracks.total === 'number') ? p.tracks.total : 0,
+        owner: p.owner ? p.owner.display_name : '',
       })));
-      url = response.data.next;
+      url = response.data.next || null;
     }
     res.json({ playlists });
   } catch (err) {
