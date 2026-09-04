@@ -1,445 +1,362 @@
-require('dotenv').config();
 const express = require('express');
-const axios = require('axios');
+const session = require('express-session');
 const path = require('path');
-const fs = require('fs');
-const http = require('http');
 const https = require('https');
+const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const USE_HTTPS = process.env.USE_HTTPS === 'true';
-const HTTPS_PFX = process.env.HTTPS_PFX;
-const HTTPS_PASSPHRASE = process.env.HTTPS_PASSPHRASE;
 
-const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-const REDIRECT_URI = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
-const BANDSINTOWN_APP_ID = process.env.BANDSINTOWN_APP_ID || 'concert-alert';
-const USER_COUNTRY = process.env.USER_COUNTRY || 'France';
-const USER_CITY = process.env.USER_CITY || 'Paris';
-
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '63a4911a71074a3882bbb5a21a77a767';
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '28f6217957824064ba4e9b56bba6e222';
+const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/callback';
+const TICKETMASTER_KEY = process.env.TICKETMASTER_KEY || 'lmSBuxsZpv2SuSIxH6mHowsuNuteTr7s';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 const userSessions = new Map();
-let concertCache = new Map();
+const currentState = new Map();
 
-function generateRandomString(length) {
-  return crypto.randomBytes(length).toString('hex').slice(0, length);
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(session({
+  secret: crypto.randomBytes(32).toString('hex'),
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false }
+}));
+
+// ── HELPERS ─────────────────────────────────────────────
+function postForm(url, params) {
+  const u = new URL(url);
+  const body = Object.entries(params).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
+  };
+  return new Promise((resolve, reject) => {
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.request(u, options, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch (e) { reject(new Error(data)); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
 }
 
-function base64Encode(str) {
-  return Buffer.from(str).toString('base64');
+function get(url, accessToken) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const options = { method: 'GET', headers: {} };
+    if (accessToken) options.headers.Authorization = 'Bearer ' + accessToken;
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.request(u, options, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(data);
+          if (res.statusCode >= 400) {
+            const err = new Error('API error ' + res.statusCode);
+            err.status = res.statusCode;
+            err.body = j;
+            reject(err);
+          } else resolve(j);
+        } catch (e) { reject(new Error(data)); }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
-// ─── SPOTIFY AUTH ROUTES ───
+function artistMatches(name, event) {
+  const target = name.toLowerCase().replace(/\s+/g, ' ').trim();
+  const tokens = target.split(' ');
+  const attraction = (event.attraction || '').toLowerCase();
+  const eventName = (event.name || '').toLowerCase();
+  const nb = String(event.nbArtists ?? 1);
+
+  if (attraction && attraction === target) return true;
+  if (attraction && (attraction.includes(target) || target.includes(attraction))) return true;
+  if (eventName && eventName.includes(target)) return true;
+
+  if (nb === '1' && tokens.length === 1) {
+    if (attraction && attraction === target) return true;
+    if (eventName && eventName.split(' ').includes(target)) return true;
+  }
+
+  if (nb !== '1' && tokens.length > 1) {
+    let all = true;
+    for (const t of tokens) {
+      if (!(attraction && attraction.split(' ').includes(t))) { all = false; break; }
+    }
+    if (all) return true;
+  }
+
+  return false;
+}
+
+function isUpcoming(dateStr) {
+  const d = new Date(dateStr);
+  return !isNaN(d) && d.getTime() >= Date.now() - 86400000;
+}
+
+function normalizeArtist(name) {
+  return name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// ── ROUTES ─────────────────────────────────────────────
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.get('/login', (req, res) => {
-  const state = generateRandomString(16);
-  const scope = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email user-top-read user-read-recently-played';
-  const authUrl = new URL('https://accounts.spotify.com/authorize');
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('client_id', SPOTIFY_CLIENT_ID);
-  authUrl.searchParams.set('scope', scope);
-  authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-  authUrl.searchParams.set('state', state);
-  authUrl.searchParams.set('show_dialog', 'true');
-  res.redirect(authUrl.toString());
+  const state = crypto.randomBytes(16).toString('hex');
+  currentState.set(state, Date.now());
+  const scope = 'playlist-read-private user-top-read user-read-recently-played';
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: SPOTIFY_CLIENT_ID,
+    scope,
+    redirect_uri: REDIRECT_URI,
+    state
+  });
+  res.redirect('https://accounts.spotify.com/authorize?' + params.toString());
 });
 
 app.get('/callback', async (req, res) => {
-  const code = req.query.code;
-  const state = req.query.state;
-  if (!code) return res.redirect('/?error=auth_denied');
+  const { code, state, error } = req.query;
+  if (error) { res.status(400).send('Login error: ' + error); return; }
+  if (!state || !currentState.has(state)) { res.status(400).send('State mismatch'); return; }
+  currentState.delete(state);
   try {
-    const tokenResponse = await axios.post('https://accounts.spotify.com/api/token',
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: REDIRECT_URI,
-      }), {
-        headers: {
-          'Authorization': 'Basic ' + base64Encode(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      });
-
-    const { access_token, refresh_token, expires_in } = tokenResponse.data;
-    userSessions.set(state, { access_token, refresh_token, expires_in, created: Date.now() });
-
-    res.redirect(`/?token=${encodeURIComponent(access_token)}#authenticated`);
-  } catch (err) {
-    console.error('Auth callback error:', err.message);
-    res.redirect('/?error=token_failed');
+    const token = await postForm('https://accounts.spotify.com/api/token', {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      client_id: SPOTIFY_CLIENT_ID,
+      client_secret: SPOTIFY_CLIENT_SECRET
+    });
+    const sessionId = crypto.randomBytes(24).toString('hex');
+    userSessions.set(sessionId, { access_token: token.access_token, refresh_token: token.refresh_token, created: Date.now() });
+    req.session.spotifySessionId = sessionId;
+    res.redirect('/');
+  } catch (e) {
+    res.status(500).send('Token exchange failed: ' + e.message);
   }
 });
 
-// ─── API ROUTES ───
+app.get('/logout', (req, res) => {
+  if (req.session.spotifySessionId) userSessions.delete(req.session.spotifySessionId);
+  req.session.destroy(() => res.redirect('/'));
+});
 
-app.get('/api/playlists', async (req, res) => {
-  const token = req.query.token;
-  if (!token) return res.status(401).json({ error: 'No token provided' });
+function getSession(req) {
+  const id = req.session && req.session.spotifySessionId;
+  if (!id || !userSessions.has(id)) return null;
+  return userSessions.get(id);
+}
+
+app.get('/api/me', async (req, res) => {
+  const sess = getSession(req);
+  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
   try {
-    const playlists = [];
-    let url = 'https://api.spotify.com/v1/me/playlists?limit=50';
-    while (url) {
-      const response = await axios.get(url, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const items = Array.isArray(response.data.items) ? response.data.items : [];
-      playlists.push(...items.map(p => ({
-        id: p.id,
-        name: p.name,
-        image: p.images?.[0]?.url,
-        trackCount: (p.tracks && typeof p.tracks.total === 'number') ? p.tracks.total : 0,
-        owner: p.owner ? p.owner.display_name : '',
-      })));
-      url = response.data.next || null;
+    const me = await get('https://api.spotify.com/v1/me', sess.access_token);
+    res.json({ id: me.id, display_name: me.display_name, popMap: {} });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+async function getAllPlaylistTracks(sess) {
+  const tracks = [];
+  let playlists = [];
+  try {
+    let next = 'https://api.spotify.com/v1/me/playlists?limit=50';
+    while (next) {
+      const data = await get(next, sess.access_token);
+      playlists = playlists.concat(data.items || []);
+      next = data.next;
     }
-    res.json({ playlists });
-  } catch (err) {
-    console.error('SPOTIFY ERROR /api/playlists:',
-      'status=', err.response?.status,
-      '| message=', err.response?.data?.error?.message,
-      '| raw=', JSON.stringify(err.response?.data).slice(0, 400),
-      '| http=', err.message);
-    res.status(500).json({ error: 'Failed to fetch playlists' });
+  } catch (e) {
+    return { tracks: [], error: 'playlists:' + e.message };
   }
-});
+  for (const pl of playlists) {
+    try {
+      let next = pl.tracks ? pl.tracks.href : null;
+      if (!next) continue;
+      while (next) {
+        const data = await get(next, sess.access_token);
+        for (const item of (data.items || [])) {
+          if (item && item.track && item.track.artists) {
+            for (const a of item.track.artists) tracks.push(a.name);
+          }
+        }
+        next = data.next;
+      }
+    } catch (e) {
+      // 403 on playlist tracks (dev mode) ignored
+    }
+  }
+  return { tracks, error: null };
+}
 
-// ─── COMBINED MY-ARTISTS (playlists + top listened) ───
+async function getTopArtists(sess, limit) {
+  try {
+    const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', sess.access_token);
+    return (data.items || []).map(a => ({ name: a.name, id: a.id, popularity: a.popularity }));
+  } catch (e) {
+    return [];
+  }
+}
 
 app.get('/api/my-artists', async (req, res) => {
-  const token = req.query.token;
-  if (!token) return res.status(401).json({ error: 'No token' });
+  const sess = getSession(req);
+  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
+  const type = req.query.type || 'all';
+  let names = [];
+  const countMap = {};
 
-  const artistMap = new Map();
-  const addArtist = (id, name, source) => {
-    if (!name) return;
-    if (!artistMap.has(id || name)) {
-      artistMap.set(id || name, { id, name, sources: new Set() });
-    }
-    artistMap.get(id || name).sources.add(source);
-  };
-
-  // 1) Artistes des playlists
-  try {
-    let url = 'https://api.spotify.com/v1/me/playlists?limit=50';
-    while (url) {
-      const plRes = await axios.get(url, { headers: { 'Authorization': `Bearer ${token}` } });
-      const playlists = plRes.data.items || [];
-      for (const pl of playlists) {
-        let tUrl = `https://api.spotify.com/v1/playlists/${pl.id}/tracks?limit=100`;
-        try {
-          while (tUrl) {
-            const trRes = await axios.get(tUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-            for (const item of trRes.data.items) {
-              if (!item.track || !item.track.artists) continue;
-              for (const a of item.track.artists) {
-                addArtist(a.id, a.name, 'playlist');
-              }
-            }
-            tUrl = trRes.data.next;
-          }
-        } catch (err) {
-          console.error('Playlist tracks blocked (403?) for', pl.name, '-', err.response?.status);
-        }
-      }
-      url = plRes.data.next;
-    }
-  } catch (err) {
-    console.error('Error fetching playlists:', err.response?.status, err.message);
+  if (type === 'all' || type === 'playlists') {
+    const pl = await getAllPlaylistTracks(sess);
+    pl.tracks.forEach(n => { const key = normalizeArtist(n); countMap[key] = (countMap[key] || 0) + 1; });
   }
-
-  // 2) Artistes les plus écoutés (top 50)
-  let topArtists = [];
-  try {
-    const top = await axios.get('https://api.spotify.com/v1/me/top/artists?limit=50&time_range=medium_term', {
-      headers: { 'Authorization': `Bearer ${token}` },
+  if (type === 'all' || type === 'top') {
+    const top = await getTopArtists(sess, 50);
+    top.forEach(a => {
+      const key = normalizeArtist(a.name);
+      countMap[key] = (countMap[key] || 0) + 1;
+      if (!selectedSeen[key]) { topMap[key] = a; selectedSeen[key] = true; }
     });
-    topArtists = top.data.items || [];
-    for (const a of topArtists) {
-      addArtist(a.id, a.name, 'top');
-    }
-  } catch (err) {
-    console.error('Error fetching top artists:', err.response?.status, err.message);
   }
 
-  // Enrichir avec la popularité Spotify (batch lookup par IDs)
-  const ids = Array.from(artistMap.keys()).filter(id => id);
-  const popMap = new Map();
-  for (const a of topArtists) {
-    if (a.popularity != null) popMap.set(a.id, a.popularity);
-  }
-  try {
-    for (let i = 0; i < ids.length; i += 50) {
-      const batch = ids.slice(i, i + 50);
-      const lookup = await axios.get(`https://api.spotify.com/v1/artists?ids=${batch.join(',')}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      for (const a of lookup.data.artists || []) {
-        if (a && a.popularity != null) popMap.set(a.id, a.popularity);
-      }
-    }
-  } catch (err) {
-    console.error('Error fetching artist popularity:', err.response?.status || err.message);
-  }
-
-  // Popularité (max des deux sources) + tri décroissant par popularité
-  let artists = Array.from(artistMap.values()).map(a => ({
-    id: a.id,
-    name: a.name,
-    popularity: popMap.get(a.id) || 0,
-    sources: Array.from(a.sources),
-  }));
-
-  artists = artists.sort((x, y) => (y.popularity || 0) - (x.popularity || 0));
-
-  res.json({ artists });
+  let list = Object.entries(countMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => ({ name: k }));
+  res.json({ artists: list.map(a => a.name) });
 });
 
-// ─── CONCERT SEARCH (Bandsintown + Ticketmaster) ───
+app.get('/api/playlists', async (req, res) => {
+  const sess = getSession(req);
+  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const data = await get('https://api.spotify.com/v1/me/playlists?limit=50', sess.access_token);
+    res.json({ playlists: (data.items || []).map(p => ({ id: p.id, name: p.name, total: p.tracks.total })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-const TICKETMASTER_API_KEY = process.env.TICKETMASTER_API_KEY || '';
+app.get('/api/playlists/:id/artists', async (req, res) => {
+  const sess = getSession(req);
+  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    let next = 'https://api.spotify.com/v1/playlists/' + req.params.id + '/tracks?limit=100';
+    const names = [];
+    while (next) {
+      const data = await get(next, sess.access_token);
+      for (const item of (data.items || [])) {
+        if (item && item.track && item.track.artists) for (const a of item.track.artists) names.push(a.name);
+      }
+      next = data.next;
+    }
+    res.json({ artists: names });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-// Grandes salles françaises prioritaires (recherche élargie quand même)
-const FRENCH_MAJOR_VENUES = [
-  'Stade de France', 'Orange Vélodrome', 'La Défense Arena', 'Accor Arena',
-  'Zenith', 'Le Zénith', 'Adidas Arena', 'Dock Pullman', 'Paris La Défense Arena',
-  'Le Dôme de Paris', 'La Seine Musicale', 'Halle Tony Garnier', 'LDLC Arena',
-  'Arkéa Arena', 'Zenith de Paris', 'Le Grand Rex', 'Parc des Princes',
-  'Groupama Stadium', 'Parc OL', 'Stade Pierre-Mauroy', 'Matmut Atlantique',
-  'Allianz Riviera', 'Roazhon Park', 'Fnac Live', 'E.Leclerc', 'Espace Fnac',
-];
-
-function normalize(str = '') {
-  return String(str).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim();
+async function enrichPopularityByID(names) {
+  return { map: {}, resolved: {} };
 }
 
-function isMajorFrenchVenue(venueName, country) {
-  const v = normalize(venueName);
-  const c = normalize(country);
-  if (c && c.includes('france')) return true;
-  return FRENCH_MAJOR_VENUES.some(vn => {
-    const n = normalize(vn);
-    return v.includes(n) || n.includes(v.split(' ').slice(0, 2).join(' '));
+app.get('/api/popularity', async (req, res) => {
+  const sess = getSession(req);
+  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
+  const name = req.query.name;
+  if (!name) return res.json({ popularity: null });
+  const { map } = await enrichPopularityByID([name]);
+  res.json({ popularity: map[name] || null });
+});
+
+async function findTicketmasterEvents(name, country) {
+  const fam = ['concert', 'music'];
+  const params = new URLSearchParams({
+    apikey: TICKETMASTER_KEY,
+    keyword: name,
+    size: '10',
+    classificationName: fam.join(',')
   });
-}
-
-// Vérifie que l'événement concerne bien CET artiste (pas juste un mot-clé).
-function artistMatches(name, event) {
-  const n = normalize(name);
-  const en = normalize(event.name || '');
-  const attrs = (event._embedded?.attractions || event.attractions || []).map(a => normalize(a.name));
-
-  // Correspondance exacte sur une attraction (le plus fiable)
-  if (attrs.includes(n)) return true;
-
-  // Nom de l'événement exactement l'artiste
-  if (en === n) return true;
-
-  // Nom composé : TOUTES les parties doivent matcher dans le même bloc
-  if (n.includes(' ')) {
-    const parts = n.split(' ').filter(p => p.length > 2);
-    const joined = attrs.join(' | ') + ' | ' + en;
-    return parts.every(p => joined.includes(p));
-  }
-
-  // Nom simple : un token exact dans une attraction
-  return attrs.some(a => a.split(' ').includes(n));
-}
-
-async function searchTicketmaster(artistName) {
-  if (!TICKETMASTER_API_KEY) return [];
+  if (country) params.set('countryCode', country);
   try {
-    const response = await axios.get('https://app.ticketmaster.com/discovery/v2/events.json', {
-      params: {
-        apikey: TICKETMASTER_API_KEY,
-        keyword: artistName,
-        size: 50,
-        countryCode: 'FR',
-        sort: 'date,asc',
-      },
-      timeout: 10000,
-    });
-    const events = response.data?._embedded?.events || [];
-    const now = new Date();
-    return events
-      .filter(e => {
-        const d = new Date(e.dates?.start?.dateTime || e.dates?.start?.localDate);
-        return d >= now;
-      })
-      .filter(e => artistMatches(artistName, e))
-      .map(e => ({
-        artist: artistName,
-        date: e.dates?.start?.dateTime || e.dates?.start?.localDate || '',
-        venue: e._embedded?.venues?.[0]?.name || 'Unknown venue',
-        city: e._embedded?.venues?.[0]?.city?.name || '',
-        country: e._embedded?.venues?.[0]?.country?.countryCode || '',
-        region: e._embedded?.venues?.[0]?.state?.stateCode || '',
-        latitude: e._embedded?.venues?.[0]?.location?.latitude,
-        longitude: e._embedded?.venues?.[0]?.location?.longitude,
-        ticketUrl: e.url || '',
-        ticketType: e.promoter ? 'Ticketmaster' : '',
-        lineup: e._embedded?.attractions?.map(a => a.name) || [],
-        source: 'Ticketmaster',
-      }));
-  } catch (err) {
-    console.error(`Ticketmaster error for ${artistName}:`, err.response?.status, err.message);
-    return [];
-  }
+    const data = await get('https://app.ticketmaster.com/discovery/v2/events.json?' + params.toString());
+    return (data._embedded && data._embedded.events) || [];
+  } catch (e) { return []; }
 }
 
-async function searchBandsintown(artistName) {
-  const encoded = encodeURIComponent(artistName);
-  const url = `https://rest.bandsintown.com/artists/${encoded}/events?app_id=${BANDSINTOWN_APP_ID}`;
-  try {
-    const response = await axios.get(url, { timeout: 10000 });
-    if (!Array.isArray(response.data)) return [];
-    return response.data
-      .filter(e => e.upcoming)
-      .filter(e => {
-        const eventDate = new Date(e.datetime);
-        return eventDate >= new Date();
-      })
-      .filter(e => artistMatches(artistName, { name: '', attractions: (e.lineup || []).map(x => ({ name: x })) }))
-      .map(e => ({
-        artist: artistName,
-        date: e.datetime,
-        venue: e.venue?.name || 'Unknown venue',
-        city: e.venue?.city || 'Unknown',
-        country: e.venue?.country || 'Unknown',
-        region: e.venue?.region || '',
-        latitude: e.venue?.latitude,
-        longitude: e.venue?.longitude,
-        ticketUrl: e.url || '',
-        ticketType: e.description || '',
-        lineup: e.lineup || [],
-        source: 'Bandsintown',
-      }));
-  } catch (err) {
-    console.error(`Bandsintown error for ${artistName}:`, err.message);
-    return [];
-  }
+function parseEventEventhub(e) {
+  const dateStr = e.start && e.start.date ? e.start.date : null;
+  const venue = e.venue ? e.venue.name : 'Lieu inconnu';
+  const city = e.venue && e.venue.location && e.venue.location.city ? e.venue.location.city : '';
+  const attraction = e.attraction ? e.attraction.name : '';
+  const url = e.url || '';
+  return { date: dateStr, venue, city, country: '', attraction, url, type: 'eventhub', capacity: null, source: 'EH' };
 }
 
-// Capacité approximative (Songkick, si clé fournie)
-async function getVenueCapacity(venueName, city) {
-  try {
-    if (!process.env.SONGKICK_API_KEY) return null;
-    const response = await axios.get(
-      'https://www.songkick.com/api/3.0/search/venues.json', {
-        params: { apikey: process.env.SONGKICK_API_KEY, query: `${venueName} ${city}` },
-        timeout: 5000,
-      }
-    );
-    if (response.data?.resultsPage?.results?.venue?.[0]) {
-      const cap = response.data.resultsPage.results.venue[0].capacity;
-      return typeof cap === 'number' ? cap : null;
-    }
-  } catch (e) {}
-  return null;
-}
-
-async function searchConcertsForArtist(artistName) {
-  const [tm, bit] = await Promise.all([
-    searchTicketmaster(artistName),
-    searchBandsintown(artistName),
-  ]);
-  const combined = [...tm, ...bit];
-
-  // Déduplique par (date + salle)
-  const seen = new Set();
-  const unique = [];
-  for (const c of combined) {
-    const key = `${c.date}-${normalize(c.venue)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(c);
-  }
-
-  // On enrichit avec la capacité pour les grandes salles FR
-  const LIMIT = 30;
-  let count = 0;
-  for (const c of unique) {
-    if (count >= LIMIT) break;
-    if (isMajorFrenchVenue(c.venue, c.country)) {
-      c.capacity = await getVenueCapacity(c.venue, c.city);
-      count++;
-    }
-  }
-
-  // Trier : concerts français en premier, puis par date
-  return unique
-    .map(c => ({ ...c, isFrance: isMajorFrenchVenue(c.venue, c.country) }))
-    .sort((a, b) => {
-      if (a.isFrance !== b.isFrance) return a.isFrance ? -1 : 1;
-      return new Date(a.date) - new Date(b.date);
-    });
-}
-
-app.get('/api/concerts', async (req, res) => {
-  const { artists } = req.query;
-  if (!artists) return res.status(400).json({ error: 'No artists specified' });
-
-  const artistList = artists.split(',').map(a => a.trim()).filter(Boolean);
-  const allConcerts = [];
-
-  for (const artist of artistList) {
-    const cacheKey = `${artist}`;
-    const cached = concertCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) {
-      allConcerts.push(...cached.concerts);
-      continue;
-    }
-    const concerts = await searchConcertsForArtist(artist);
-    concertCache.set(cacheKey, { concerts, timestamp: Date.now() });
-    allConcerts.push(...concerts);
-  }
-
-  allConcerts.sort((a, b) => new Date(a.date) - new Date(b.date));
-  res.json({ concerts: allConcerts });
-});
-
-// ─── SINGLE ARTIST CONCERT SEARCH ───
-
-app.get('/api/concerts/:artist', async (req, res) => {
-  const artist = decodeURIComponent(req.params.artist);
-  const concerts = await searchConcertsForArtist(artist);
-  res.json({ concerts });
-});
-
-// ─── POLLING STATUS ───
-
-app.get('/api/health', (req, res) => {
+app.post('/api/concerts/:artist', async (req, res) => {
+  const artist = req.params.artist;
+  const country = (req.body && req.body.country) || 'FR';
+  if (!artist) return res.status(400).json({ error: 'Missing artist' });
+  const results = [];
+  results.push(...await findTicketmasterEvents(artist, country));
+  const filtered = results.filter(e => artistMatches(artist, e)).filter(e => isUpcoming(e.date));
+  const sorted = filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (sorted.length === 0) return res.json({ artist: artist, concert: null });
+  const c = sorted[0];
   res.json({
-    status: 'ok',
-    cacheSize: concertCache.size,
-    uptime: process.uptime(),
+    artist,
+    concert: {
+      venue: c.venue,
+      city: c.city,
+      date: c.date,
+      country: c.country,
+      capacity: c.capacity,
+      source: c.type === 'eventhub' ? 'EventHub' : 'Ticketmaster',
+      url: c.url
+    }
   });
 });
 
-// ─── SERVE FRONTEND ───
-
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.post('/api/multi-artist', async (req, res) => {
+  const { artists } = req.body;
+  if (!artists || !Array.isArray(artists)) return res.status(400).json({ error: 'Invalid body' });
+  const out = [];
+  for (const name of artists) {
+    const country = 'FR';
+    let concerts = [];
+    concerts.push(...await findTicketmasterEvents(name, country));
+    const matched = concerts.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
+    matched.sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (matched.length === 0) { out.push({ name, popularity: null, concert: null }); continue; }
+    const c = matched[0];
+    out.push({
+      name,
+      popularity: null,
+      concert: {
+        venue: c.venue,
+        city: c.city,
+        date: c.date,
+        country: c.country,
+        capacity: c.capacity,
+        source: c.type === 'eventhub' ? 'EventHub' : 'Ticketmaster',
+        url: c.url
+      }
+    });
+  }
+  res.json(out);
 });
 
-const protocol = USE_HTTPS ? 'https' : 'http';
-let server;
-if (USE_HTTPS) {
-  const pfxPath = HTTPS_PFX || path.join(__dirname, 'cert', 'concert.pfx');
-  server = https.createServer({ pfx: fs.readFileSync(pfxPath), passphrase: HTTPS_PASSPHRASE || 'concert' }, app);
-} else {
-  server = http.createServer(app);
-}
-
-server.listen(PORT, () => {
-  console.log(`\n🎵 Concert Alert running at ${protocol}://localhost:${PORT}`);
-  console.log(`📍 Monitoring concerts in: ${USER_CITY}, ${USER_COUNTRY}`);
-  console.log(`\n1. Go to ${protocol}://localhost:${PORT}`);
-  console.log(`2. Log in with Spotify`);
-  console.log(`3. Watch your artists' next concerts!\n`);
+app.listen(PORT, () => {
+  console.log('🎵 Concert Alert running on port ' + PORT);
 });
