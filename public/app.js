@@ -1,5 +1,4 @@
 let artists = [];
-let selectedArtist = null;
 let artistPop = {};
 
 const MOIS_FR = ["janv","févr","mars","avr","mai","juin","juil","août","sept","oct","nov","déc"];
@@ -40,20 +39,14 @@ function addArtist() {
   const input = document.getElementById('artist-input');
   const name = input.value.trim();
   if (!name) return;
-  if (!artists.includes(name)) {
-    artists.push(name);
-    renderTags();
-  }
+  if (!artists.includes(name)) { artists.push(name); renderTags(); }
   input.value = '';
   document.getElementById('btn-search').disabled = artists.length === 0;
   updateArtistCount();
 }
 
 function addArtistDirect(name) {
-  if (!artists.includes(name)) {
-    artists.push(name);
-    renderTags();
-  }
+  if (!artists.includes(name)) { artists.push(name); renderTags(); }
   document.getElementById('btn-search').disabled = artists.length === 0;
   updateArtistCount();
 }
@@ -74,8 +67,6 @@ async function searchConcerts() {
   loading.style.display = 'flex';
   container.innerHTML = '';
   noConcerts.style.display = 'none';
-  const progress = document.getElementById('progress-fill');
-
   try {
     const res = await fetch('/api/multi-artist', {
       method: 'POST',
@@ -86,7 +77,6 @@ async function searchConcerts() {
     const data = await res.json();
     loading.style.display = 'none';
     if (!data || !data.length) { noConcerts.style.display = 'block'; return; }
-
     const results = data.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     renderConcerts(results);
     document.getElementById('alerts-count').textContent = results.length + ' artiste' + (results.length > 1 ? 's' : '');
@@ -97,13 +87,10 @@ async function searchConcerts() {
 }
 
 function formatDate(iso) {
+  if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d)) return null;
-  return {
-    day: d.getDate(),
-    month: MOIS_FR[d.getMonth()],
-    year: d.getFullYear()
-  };
+  return { day: d.getDate(), month: MOIS_FR[d.getMonth()], year: d.getFullYear() };
 }
 
 function renderConcerts(results) {
@@ -111,15 +98,14 @@ function renderConcerts(results) {
   container.innerHTML = '';
   results.forEach(r => {
     if (!r.concert) return;
-    const pop = r.popularity;
     const date = formatDate(r.concert.date);
+    const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
     const section = document.createElement('div');
     section.className = 'artist-section';
-    const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
     section.innerHTML = `
       <div class="artist-section-header">
         <h3>${r.name}</h3>
-        ${pop ? `<span class="track-badge">Pop ${pop}</span>` : ''}
+        ${r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : ''}
       </div>
       <div class="concert-card">
         ${monthHtml}
@@ -140,6 +126,7 @@ function renderConcerts(results) {
 }
 
 let _allRendered = [];
+
 function filterConcerts(value) {
   const v = value.trim().toLowerCase();
   const container = document.getElementById('concerts-container');
@@ -166,7 +153,7 @@ function filterConcerts(value) {
           <div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div>
           <div class="concert-tags">
             ${r.concert.capacity ? `<span class="concert-tag capacity">${r.concert.capacity} places</span>` : ''}
-          <span class="concert-tag source">${r.concert.source}</span>
+            <span class="concert-tag source">${r.concert.source}</span>
           </div>
         </div>
         ${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}
@@ -176,23 +163,20 @@ function filterConcerts(value) {
   });
 }
 
-function getQueryParam(name) {
-  const p = new URLSearchParams(window.location.search);
-  return p.get(name);
-}
-
 (async function init() {
   try {
     const me = await fetch('/api/me');
-    if (me.ok) {
-      const data = await me.json();
-      artistPop = data.popMap || {};
-      if (data.artists && data.artists.length) {
-        artists = data.artists;
+    const data = await me.json();
+    if (data.authenticated) {
+      const r = await fetch('/api/my-artists');
+      const my = await r.json();
+      artistPop = my.popMap || {};
+      if (my.artists && my.artists.length) {
+        artists = my.artists;
         renderTags();
         document.getElementById('btn-search').disabled = false;
         updateArtistCount();
-        document.getElementById('artist-summary').textContent = `${data.artists.length} artistes importés depuis ton Spotify`;
+        document.getElementById('artist-summary').textContent = `${my.artists.length} artistes importés depuis ton Spotify`;
         searchConcerts();
       } else {
         showScreen('screen-artists');
