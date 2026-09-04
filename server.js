@@ -1,10 +1,8 @@
 const express = require('express');
-const session = require('express-session');
 const path = require('path');
 const https = require('https');
 const http = require('http');
 const crypto = require('crypto');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,29 +11,21 @@ const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '63a4911a71074a3882bb
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '28f6217957824064ba4e9b56bba6e222';
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/callback';
 const TICKETMASTER_KEY = process.env.TICKETMASTER_KEY || 'lmSBuxsZpv2SuSIxH6mHowsuNuteTr7s';
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 const userSessions = new Map();
 const currentState = new Map();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(session({
-  secret: crypto.randomBytes(32).toString('hex'),
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false }
-}));
 
-// ── HELPERS ─────────────────────────────────────────────
 function postForm(url, params) {
-  const u = new URL(url);
-  const body = Object.entries(params).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
-  const options = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
-  };
   return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const body = new URLSearchParams(params).toString();
+    const options = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
+    };
     const lib = u.protocol === 'https:' ? https : http;
     const req = lib.request(u, options, res => {
       let data = '';
@@ -62,12 +52,8 @@ function get(url, accessToken) {
       res.on('end', () => {
         try {
           const j = JSON.parse(data);
-          if (res.statusCode >= 400) {
-            const err = new Error('API error ' + res.statusCode);
-            err.status = res.statusCode;
-            err.body = j;
-            reject(err);
-          } else resolve(j);
+          if (res.statusCode >= 400) { reject(Object.assign(new Error('API error ' + res.statusCode), { body: j })); }
+          else resolve(j);
         } catch (e) { reject(new Error(data)); }
       });
     });
@@ -76,43 +62,10 @@ function get(url, accessToken) {
   });
 }
 
-function artistMatches(name, event) {
-  const target = name.toLowerCase().replace(/\s+/g, ' ').trim();
-  const tokens = target.split(' ');
-  const attraction = (event.attraction || '').toLowerCase();
-  const eventName = (event.name || '').toLowerCase();
-  const nb = String(event.nbArtists ?? 1);
-
-  if (attraction && attraction === target) return true;
-  if (attraction && (attraction.includes(target) || target.includes(attraction))) return true;
-  if (eventName && eventName.includes(target)) return true;
-
-  if (nb === '1' && tokens.length === 1) {
-    if (attraction && attraction === target) return true;
-    if (eventName && eventName.split(' ').includes(target)) return true;
-  }
-
-  if (nb !== '1' && tokens.length > 1) {
-    let all = true;
-    for (const t of tokens) {
-      if (!(attraction && attraction.split(' ').includes(t))) { all = false; break; }
-    }
-    if (all) return true;
-  }
-
-  return false;
-}
-
-function isUpcoming(dateStr) {
-  const d = new Date(dateStr);
-  return !isNaN(d) && d.getTime() >= Date.now() - 86400000;
-}
-
 function normalizeArtist(name) {
   return name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// ── ROUTES ─────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.get('/login', (req, res) => {
@@ -142,151 +95,86 @@ app.get('/callback', async (req, res) => {
       client_id: SPOTIFY_CLIENT_ID,
       client_secret: SPOTIFY_CLIENT_SECRET
     });
-    const sessionId = crypto.randomBytes(24).toString('hex');
-    userSessions.set(sessionId, { access_token: token.access_token, refresh_token: token.refresh_token, created: Date.now() });
-    req.session.spotifySessionId = sessionId;
+    const tokenId = crypto.randomBytes(24).toString('hex');
+    userSessions.set(tokenId, token.access_token);
+    res.cookie('ca_session', tokenId, { httpOnly: true, maxAge: 60 * 60 * 24 * 7 });
     res.redirect('/');
   } catch (e) {
-    res.status(500).send('Token exchange failed: ' + e.message);
+    res.status(500).send('Login failed: ' + e.message);
   }
 });
 
-app.get('/logout', (req, res) => {
-  if (req.session.spotifySessionId) userSessions.delete(req.session.spotifySessionId);
-  req.session.destroy(() => res.redirect('/'));
-});
-
-function getSession(req) {
-  const id = req.session && req.session.spotifySessionId;
+function getToken(req) {
+  const id = req.cookies ? req.cookies.ca_session : null;
   if (!id || !userSessions.has(id)) return null;
   return userSessions.get(id);
 }
 
-app.get('/api/me', async (req, res) => {
-  const sess = getSession(req);
-  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const me = await get('https://api.spotify.com/v1/me', sess.access_token);
-    res.json({ id: me.id, display_name: me.display_name, popMap: {} });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+app.use((req, res, next) => {
+  const header = req.headers.cookie || '';
+  const match = header.match(/ca_session=([^;]+)/);
+  req.cookies = match ? { ca_session: match[1] } : {};
+  next();
 });
 
-async function getAllPlaylistTracks(sess) {
-  const tracks = [];
-  let playlists = [];
+app.get('/api/me', async (req, res) => {
+  const token = getToken(req);
+  if (!token) return res.json({ authenticated: false });
   try {
-    let next = 'https://api.spotify.com/v1/me/playlists?limit=50';
-    while (next) {
-      const data = await get(next, sess.access_token);
-      playlists = playlists.concat(data.items || []);
-      next = data.next;
-    }
+    const me = await get('https://api.spotify.com/v1/me', token);
+    return res.json({ authenticated: true, id: me.id, display_name: me.display_name });
   } catch (e) {
-    return { tracks: [], error: 'playlists:' + e.message };
+    return res.json({ authenticated: false });
   }
-  for (const pl of playlists) {
-    try {
-      let next = pl.tracks ? pl.tracks.href : null;
-      if (!next) continue;
-      while (next) {
-        const data = await get(next, sess.access_token);
-        for (const item of (data.items || [])) {
-          if (item && item.track && item.track.artists) {
-            for (const a of item.track.artists) tracks.push(a.name);
-          }
-        }
-        next = data.next;
-      }
-    } catch (e) {
-      // 403 on playlist tracks (dev mode) ignored
-    }
-  }
-  return { tracks, error: null };
-}
+});
 
 async function getTopArtists(sess, limit) {
   try {
-    const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', sess.access_token);
-    return (data.items || []).map(a => ({ name: a.name, id: a.id, popularity: a.popularity }));
-  } catch (e) {
-    return [];
-  }
+    const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', sess);
+    return (data.items || []).map(a => ({ name: a.name, popularity: a.popularity || null }));
+  } catch (e) { return []; }
 }
 
 app.get('/api/my-artists', async (req, res) => {
-  const sess = getSession(req);
-  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
-  const type = req.query.type || 'all';
-  let names = [];
-  const countMap = {};
-
-  if (type === 'all' || type === 'playlists') {
-    const pl = await getAllPlaylistTracks(sess);
-    pl.tracks.forEach(n => { const key = normalizeArtist(n); countMap[key] = (countMap[key] || 0) + 1; });
-  }
-  if (type === 'all' || type === 'top') {
-    const top = await getTopArtists(sess, 50);
+  const token = getToken(req);
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const top = await getTopArtists(token, 50);
+    const list = [];
+    const seen = new Set();
+    const popMap = {};
     top.forEach(a => {
       const key = normalizeArtist(a.name);
-      countMap[key] = (countMap[key] || 0) + 1;
-      if (!selectedSeen[key]) { topMap[key] = a; selectedSeen[key] = true; }
+      if (!seen.has(key)) { seen.add(key); list.push(a.name); }
+      if (a.popularity != null) popMap[a.name] = a.popularity;
     });
+    res.json({ artists: list, popMap });
+  } catch (e) {
+    res.json({ artists: [], popMap: {} });
   }
-
-  let list = Object.entries(countMap)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k]) => ({ name: k }));
-  res.json({ artists: list.map(a => a.name) });
 });
 
-app.get('/api/playlists', async (req, res) => {
-  const sess = getSession(req);
-  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const data = await get('https://api.spotify.com/v1/me/playlists?limit=50', sess.access_token);
-    res.json({ playlists: (data.items || []).map(p => ({ id: p.id, name: p.name, total: p.tracks.total })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/playlists/:id/artists', async (req, res) => {
-  const sess = getSession(req);
-  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    let next = 'https://api.spotify.com/v1/playlists/' + req.params.id + '/tracks?limit=100';
-    const names = [];
-    while (next) {
-      const data = await get(next, sess.access_token);
-      for (const item of (data.items || [])) {
-        if (item && item.track && item.track.artists) for (const a of item.track.artists) names.push(a.name);
-      }
-      next = data.next;
-    }
-    res.json({ artists: names });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-async function enrichPopularityByID(names) {
-  return { map: {}, resolved: {} };
+function artistMatches(name, event) {
+  const target = name.toLowerCase().replace(/\s+/g, ' ').trim();
+  const attraction = (event.attraction || '').toLowerCase();
+  const eventName = (event.name || '').toLowerCase();
+  if (attraction && attraction === target) return true;
+  if (attraction && (attraction.includes(target) || target.includes(attraction))) return true;
+  if (eventName && eventName.includes(target)) return true;
+  return false;
 }
 
-app.get('/api/popularity', async (req, res) => {
-  const sess = getSession(req);
-  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
-  const name = req.query.name;
-  if (!name) return res.json({ popularity: null });
-  const { map } = await enrichPopularityByID([name]);
-  res.json({ popularity: map[name] || null });
-});
+function isUpcoming(dateStr) {
+  const d = new Date(dateStr);
+  return !isNaN(d) && d.getTime() >= Date.now() - 86400000;
+}
 
 async function findTicketmasterEvents(name, country) {
-  const fam = ['concert', 'music'];
   const params = new URLSearchParams({
     apikey: TICKETMASTER_KEY,
     keyword: name,
     size: '10',
-    classificationName: fam.join(',')
+    classificationName: 'concert,music'
   });
   if (country) params.set('countryCode', country);
   try {
@@ -295,48 +183,13 @@ async function findTicketmasterEvents(name, country) {
   } catch (e) { return []; }
 }
 
-function parseEventEventhub(e) {
-  const dateStr = e.start && e.start.date ? e.start.date : null;
-  const venue = e.venue ? e.venue.name : 'Lieu inconnu';
-  const city = e.venue && e.venue.location && e.venue.location.city ? e.venue.location.city : '';
-  const attraction = e.attraction ? e.attraction.name : '';
-  const url = e.url || '';
-  return { date: dateStr, venue, city, country: '', attraction, url, type: 'eventhub', capacity: null, source: 'EH' };
-}
-
-app.post('/api/concerts/:artist', async (req, res) => {
-  const artist = req.params.artist;
-  const country = (req.body && req.body.country) || 'FR';
-  if (!artist) return res.status(400).json({ error: 'Missing artist' });
-  const results = [];
-  results.push(...await findTicketmasterEvents(artist, country));
-  const filtered = results.filter(e => artistMatches(artist, e)).filter(e => isUpcoming(e.date));
-  const sorted = filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
-  if (sorted.length === 0) return res.json({ artist: artist, concert: null });
-  const c = sorted[0];
-  res.json({
-    artist,
-    concert: {
-      venue: c.venue,
-      city: c.city,
-      date: c.date,
-      country: c.country,
-      capacity: c.capacity,
-      source: c.type === 'eventhub' ? 'EventHub' : 'Ticketmaster',
-      url: c.url
-    }
-  });
-});
-
 app.post('/api/multi-artist', async (req, res) => {
   const { artists } = req.body;
   if (!artists || !Array.isArray(artists)) return res.status(400).json({ error: 'Invalid body' });
   const out = [];
   for (const name of artists) {
-    const country = 'FR';
-    let concerts = [];
-    concerts.push(...await findTicketmasterEvents(name, country));
-    const matched = concerts.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
+    let events = await findTicketmasterEvents(name, 'FR');
+    const matched = events.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
     matched.sort((a, b) => new Date(a.date) - new Date(b.date));
     if (matched.length === 0) { out.push({ name, popularity: null, concert: null }); continue; }
     const c = matched[0];
@@ -344,13 +197,13 @@ app.post('/api/multi-artist', async (req, res) => {
       name,
       popularity: null,
       concert: {
-        venue: c.venue,
-        city: c.city,
-        date: c.date,
-        country: c.country,
-        capacity: c.capacity,
-        source: c.type === 'eventhub' ? 'EventHub' : 'Ticketmaster',
-        url: c.url
+        venue: c.venue || 'Lieu inconnu',
+        city: c.city || '',
+        date: c.date || null,
+        country: 'FR',
+        capacity: c.capacity || null,
+        source: 'Ticketmaster',
+        url: c.url || ''
       }
     });
   }
