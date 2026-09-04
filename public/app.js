@@ -1,9 +1,29 @@
+var spotifyToken = new URLSearchParams(window.location.search).get('token') || '';
 var artistList = [];
 var allConcerts = [];
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
   document.getElementById(id).classList.add('active');
+}
+
+if (spotifyToken) {
+  loadTopArtists();
+}
+
+async function loadTopArtists() {
+  if (!spotifyToken) { showScreen('screen-artists'); return; }
+  try {
+    var res = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10&time_range=medium_term', { headers: { 'Authorization': 'Bearer ' + spotifyToken } });
+    var data = await res.json();
+    var items = data.items || [];
+    for (var i = 0; i < items.length; i++) {
+      addArtistDirect(items[i].name);
+    }
+    showScreen('screen-artists');
+  } catch (err) {
+    showScreen('screen-artists');
+  }
 }
 
 function addArtist() {
@@ -18,7 +38,6 @@ function addArtist() {
   artistList.push({ name: name, checked: true });
   input.value = '';
   renderList();
-  focus();
 }
 
 function addArtistDirect(name) {
