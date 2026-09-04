@@ -9,15 +9,12 @@ function showScreen(id) {
 }
 
 function logout() {
+  window.location.href = '/logout';
+}
+
+function changeAccount() {
   fetch('/logout').then(() => {
-    artists = [];
-    artistPop = {};
-    _allRendered = [];
-    showScreen('screen-login');
-    document.getElementById('concerts-container').innerHTML = '';
-    document.getElementById('artist-tags').innerHTML = '';
-    document.getElementById('btn-search').disabled = true;
-    document.getElementById('artist-count').textContent = '';
+    window.location.href = '/login';
   });
 }
 
