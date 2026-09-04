@@ -5,20 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Concert Alert</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
-
   <div id="screen-login" class="screen active">
     <div class="login-container">
       <div class="login-glow"></div>
       <div class="login-icon">🎵</div>
       <h1>Concert <span class="accent">Alert</span></h1>
       <p class="subtitle">Ne rate plus jamais un concert de tes artistes favoris</p>
+      <div class="features-grid">
+        <div class="feature"><span class="feature-icon">🔍</span><span>Entre les noms de tes artistes</span></div>
+        <div class="feature"><span class="feature-icon">🔔</span><span>Alertes en temps réel</span></div>
+        <div class="feature"><span class="feature-icon">🎫</span><span>Achète tes billets directement</span></div>
+        <div class="feature"><span class="feature-icon">📍</span><span>Lieu, date & taille de salle</span></div>
+      </div>
       <a class="btn-spotify" href="/login">
         <span>🔗</span> Se connecter avec Spotify
       </a>
-      <p class="privacy-note">Connecte-toi pour retrouver automatiquement tes artistes favoris.</p>
+      <p class="privacy-note">Connecte-toi pour retrouver les concerts de tes playlists et artistes écoutés.</p>
     </div>
   </div>
 
@@ -28,35 +34,39 @@
         <span class="logo-small">🎵</span>
         <span class="logo-text">Concert <span class="accent">Alert</span></span>
       </div>
-      <button class="btn-sm btn-outline" onclick="showScreen('screen-login')">← Accueil</button>
     </header>
     <div class="content">
+      <h2>Ajoute tes artistes</h2>
+      <p class="hint">Tape le nom d'un artiste et clique "Ajouter" (ou Entrée)</p>
       <div class="artist-input-area">
         <div class="input-row">
           <input type="text" id="artist-input" placeholder="Ex: SCH, Dua Lipa, Coldplay..." onkeydown="if(event.key==='Enter')addArtist()">
           <button class="btn-add" onclick="addArtist()">+ Ajouter</button>
         </div>
-        <div class="artist-tools">
-          <span id="artist-count" class="artist-count"></span>
-          <button class="btn-clear" onclick="clearAllArtists()">🗑 Tout supprimer</button>
-        </div>
-        <div id="artist-list" class="artist-list"></div>
+        <div id="artist-tags" class="artist-tags"></div>
       </div>
       <div class="artist-suggestions">
-        <p class="hint">Tes artistes Spotify vont s'ajouter ici automatiquement.</p>
+        <p class="hint">Artistes populaires :</p>
         <div class="suggestion-chips">
           <button class="chip" onclick="addArtistDirect('Dua Lipa')">Dua Lipa</button>
           <button class="chip" onclick="addArtistDirect('Coldplay')">Coldplay</button>
+          <button class="chip" onclick="addArtistDirect('Billie Eilish')">Billie Eilish</button>
+          <button class="chip" onclick="addArtistDirect('Kendrick Lamar')">Kendrick Lamar</button>
           <button class="chip" onclick="addArtistDirect('SCH')">SCH</button>
           <button class="chip" onclick="addArtistDirect('Damso')">Damso</button>
-          <button class="chip" onclick="addArtistDirect('Jul')">Jul</button>
-          <button class="chip" onclick="addArtistDirect('Aya Nakamura')">Aya Nakamura</button>
+          <button class="chip" onclick="addArtistDirect('Drake')">Drake</button>
+          <button class="chip" onclick="addArtistDirect('Travis Scott')">Travis Scott</button>
+          <button class="chip" onclick="addArtistDirect('Imagine Dragons')">Imagine Dragons</button>
+          <button class="chip" onclick="addArtistDirect('Post Malone')">Post Malone</button>
+          <button class="chip" onclick="addArtistDirect('Maitre Gims')">Maitre Gims</button>
+          <button class="chip" onclick="addArtistDirect('Booba')">Booba</button>
         </div>
       </div>
       <div class="search-bar-container">
         <button class="btn-analyze" id="btn-search" onclick="searchConcerts()" disabled>
           Rechercher les concerts
         </button>
+        <span id="artist-count" style="color:var(--text-dim);font-size:14px"></span>
       </div>
     </div>
   </div>
@@ -97,7 +107,6 @@
   </div>
 
   <div id="toast-container" class="toast-container"></div>
-
   <script src="app.js"></script>
 </body>
 </html>
