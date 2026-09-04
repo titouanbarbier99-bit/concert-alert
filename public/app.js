@@ -58,6 +58,39 @@ function removeArtist(i) {
   updateArtistCount();
 }
 
+function norm(s) {
+  return (s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+async function fetchBandsintownDirect(name) {
+  try {
+    const res = await fetch('https://rest.bandsintown.com/artists/' + encodeURIComponent(name) + '/events?app_id=concert-alert&date=upcoming');
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    const target = norm(name);
+    return data
+      .filter(e => {
+        const lineup = (e.lineup && e.lineup[0]) || name;
+        const tn = norm(lineup);
+        return tn === target || tn.includes(target) || target.includes(tn);
+      })
+      .map(e => ({
+        name,
+        popularity: null,
+        concert: {
+          venue: (e.venue && e.venue.name) || 'Lieu inconnu',
+          city: (e.venue && e.venue.city) || '',
+          country: (e.venue && e.venue.country) || '',
+          date: e.datetime || null,
+          capacity: null,
+          source: 'Bandsintown',
+          url: (e.offers && e.offers[0] && e.offers[0].url) || ''
+        }
+      }));
+  } catch (e) { return []; }
+}
+
 async function searchConcerts() {
   if (artists.length === 0) return;
   showScreen('screen-alerts');
@@ -67,23 +100,46 @@ async function searchConcerts() {
   loading.style.display = 'flex';
   container.innerHTML = '';
   noConcerts.style.display = 'none';
+
+  const results = [];
+  const ticketByName = new Map();
+
   try {
     const res = await fetch('/api/multi-artist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ artists })
     });
-    if (!res.ok) throw new Error('Erreur serveur');
-    const data = await res.json();
-    loading.style.display = 'none';
-    if (!data || !data.length) { noConcerts.style.display = 'block'; return; }
-    const results = data.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    renderConcerts(results);
-    document.getElementById('alerts-count').textContent = results.length + ' artiste' + (results.length > 1 ? 's' : '');
-  } catch (e) {
-    loading.style.display = 'none';
-    showToast('Erreur : ' + e.message, 'error');
+    if (res.ok) {
+      const data = await res.json();
+      (data || []).forEach(r => {
+        if (r && r.concert) ticketByName.set(r.name, r);
+      });
+    }
+  } catch (e) {}
+
+  // Ajouter la recherche Bandsintown directe (navigateur)
+  for (const name of artists) {
+    const bit = await fetchBandsintownDirect(name);
+    const tm = ticketByName.get(name);
+    const options = [];
+    if (tm) options.push(tm);
+    if (bit.length) options.push(...bit);
+    if (options.length === 0) {
+      results.push({ name, popularity: artistPop[name] || null, concert: null });
+      continue;
+    }
+    options.sort((a, b) => new Date(a.concert.date) - new Date(b.concert.date));
+    results.push({ name, popularity: artistPop[name] || null, concert: options[0].concert });
   }
+
+  loading.style.display = 'none';
+  const withConcerts = results.filter(r => r.concert);
+  if (withConcerts.length === 0) { noConcerts.style.display = 'block'; return; }
+  withConcerts.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  renderConcerts(withConcerts);
+  const count = results.filter(r => r.concert).length;
+  document.getElementById('alerts-count').textContent = count + ' concert' + (count > 1 ? 's' : '');
 }
 
 function formatDate(iso) {
@@ -166,8 +222,8 @@ function filterConcerts(value) {
 (async function init() {
   try {
     const me = await fetch('/api/me');
-    const data = await me.json();
-    if (data.authenticated) {
+    const m = await me.json();
+    if (m.authenticated) {
       const r = await fetch('/api/my-artists');
       const my = await r.json();
       artistPop = my.popMap || {};
