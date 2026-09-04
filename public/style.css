@@ -1,490 +1,164 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #050507;
-  --bg-2: #0b0b10;
-  --card: #101017;
-  --card-hover: #16161f;
-  --border: #1c1c26;
-  --accent: #e6e6e6;
-  --accent-solid: #5b8cff;
-  --accent-soft: rgba(91,140,255,0.1);
-  --text: #f5f5f7;
-  --text-dim: #8a8a93;
-  --radius: 14px;
-  --radius-sm: 10px;
+  --bg: #151317;
+  --bg-low: #0f0d11;
+  --surface: #211f23;
+  --surface-low: #1d1b1f;
+  --surface-high: #2c292d;
+  --surface-highest: #373438;
+  --text: #e7e0e6;
+  --text-dim: #b9b0b6;
+  --text-variant: #8a7f85;
+  --accent: #ff4f42;
+  --accent-container: #ff5447;
+  --accent-soft: rgba(255,84,71,0.18);
+  --accent-glow: rgba(255,79,66,0.35);
+  --tertiary: #ffb77a;
+  --secondary: #ccc8a2;
+  --border: #2c292d;
+  --radius: 1rem;
+  --radius-sm: 0.75rem;
+  --shadow: 0 8px 32px rgba(0,0,0,0.5);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-html, body {
+body {
+  font-family: var(--font);
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
 }
 
-.screen { display: none; min-height: 100vh; }
-.screen.active { display: block; }
-
-/* ═══ ACCUEIL ═══ */
-.login-container {
-  max-width: 560px;
-  margin: 0 auto;
-  padding: 60px 24px;
-  text-align: center;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(600px 600px at -10% -10%, rgba(255,79,66,0.10), transparent 60%),
+    radial-gradient(600px 600px at 110% 30%, rgba(255,183,122,0.08), transparent 60%),
+    radial-gradient(700px 700px at 40% 110%, rgba(255,84,71,0.08), transparent 60%);
 }
 
-.login-icon {
-  font-size: 60px;
-  margin-bottom: 24px;
-}
+.screen { position: relative; z-index: 1; display: none; min-height: 100vh; }
+.screen.active { display: flex; flex-direction: column; }
+.accent { color: var(--accent); }
 
-.login-container h1 {
-  font-size: 44px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  margin-bottom: 12px;
-}
-
-.accent { color: var(--accent-solid); }
-
-.subtitle {
-  color: var(--text-dim);
-  font-size: 16px;
-  margin-bottom: 40px;
-  line-height: 1.5;
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 40px;
-  width: 100%;
-}
-
-.feature {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  color: var(--text-dim);
-  text-align: left;
-}
-
-.feature-icon { font-size: 18px; }
-
-.btn-spotify {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px 32px;
-  background: #1DB954;
-  color: #000;
-  border-radius: 50px;
-  font-weight: 600;
-  font-size: 16px;
-  text-decoration: none;
-  transition: opacity 0.2s;
-}
-
-.btn-spotify:hover { opacity: 0.9; }
-
-.btn-start {
-  display: inline-block;
-  padding: 15px 40px;
-  background: var(--text);
-  color: #000;
-  border: none;
-  border-radius: 50px;
-  font-weight: 600;
-  font-size: 16px;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.btn-start:hover { opacity: 0.85; }
-
-.privacy-note {
-  margin-top: 20px;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
-/* ═══ TOPBAR ═══ */
 .topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 32px;
-  background: rgba(5,5,7,0.85);
-  backdrop-filter: blur(16px);
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 28px;
+  background: rgba(21,19,23,0.72);
+  backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 100;
 }
-
-.topbar-left { display: flex; align-items: center; gap: 10px; }
-.logo-small { font-size: 22px; }
-.logo-text { font-weight: 600; font-size: 17px; }
-.logo-text .accent { color: var(--accent-solid); }
-.topbar-right { display: flex; align-items: center; gap: 10px; }
-
-.btn-sm {
-  padding: 8px 16px;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: inherit;
-}
-
-.btn-sm:hover { border-color: var(--accent-solid); color: var(--text); }
-
-.alerts-badge {
-  background: var(--accent-solid);
-  color: #fff;
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* ═══ CONTENU ═══ */
-.content {
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 32px 24px;
-}
-
-.content h2 {
-  font-size: 24px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  margin-bottom: 6px;
-}
-
-.hint {
-  color: var(--text-dim);
-  font-size: 14px;
-  margin-bottom: 20px;
-}
-
-/* ═══ SAISIE ARTISTES ═══ */
-.input-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.input-row input {
-  flex: 1;
-  padding: 14px 18px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 15px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.input-row input:focus { border-color: var(--accent-solid); }
-.input-row input::placeholder { color: var(--text-dim); }
-
-.btn-add {
-  padding: 14px 22px;
-  background: var(--text);
-  color: #000;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.btn-add:hover { opacity: 0.85; }
-
-.artist-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 10px;
-  margin-bottom: 20px;
-}
-
-.artist-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: var(--accent-soft);
-  border: 1px solid rgba(91,140,255,0.3);
-  color: var(--text);
-  border-radius: 50px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.artist-tag button {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-}
-
-.artist-tag button:hover { color: var(--text); }
-
-.artist-suggestions { margin-bottom: 28px; }
-.suggestion-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-
-.chip {
-  padding: 8px 16px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 50px;
-  color: var(--text-dim);
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.chip:hover { border-color: var(--accent-solid); color: var(--text); }
-
-.search-bar-container {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.btn-analyze {
-  padding: 14px 32px;
-  background: var(--text);
-  color: #000;
-  border: none;
-  border-radius: 50px;
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.btn-analyze:disabled {
-  background: var(--card);
-  color: var(--text-dim);
-  cursor: not-allowed;
-}
-
-.btn-analyze:not(:disabled):hover { opacity: 0.85; }
-
-/* ═══ CHARGEMENT ═══ */
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 40px;
-}
-
-.spinner {
-  width: 34px;
-  height: 34px;
-  border: 3px solid var(--border);
-  border-top: 3px solid var(--accent-solid);
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.logo-small {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  background: var(--accent-container);
   border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  box-shadow: 0 8px 24px var(--accent-glow);
 }
+.logo-text { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+.alerts-badge { background: var(--accent-soft); color: var(--accent); padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; }
 
+.btn-sm { padding: 7px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; font-family: inherit; }
+.btn-outline { background: var(--surface-high); border: 1px solid var(--border); color: var(--text-dim); }
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); background: var(--surface-highest); }
+.btn-spotify { display: inline-flex; align-items: center; gap: 12px; padding: 16px 36px; background: #1DB954; color: #00280f; font-size: 16px; font-weight: 700; border-radius: 999px; text-decoration: none; transition: all 0.3s; box-shadow: 0 0 40px rgba(29,185,84,0.35); }
+.btn-spotify:hover { transform: scale(1.04); box-shadow: 0 0 60px rgba(29,185,84,0.5); }
+.btn-ticket { display: inline-flex; align-items: center; gap: 8px; padding: 11px 26px; background: var(--accent-container); color: #4a0002; font-size: 14px; font-weight: 700; border-radius: 999px; text-decoration: none; transition: all 0.2s; }
+.btn-ticket:hover { background: var(--accent); transform: translateY(-1px); box-shadow: 0 8px 24px var(--accent-glow); }
+
+.login-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 40px 20px; text-align: center; }
+.login-icon { font-size: 64px; margin-bottom: 16px; animation: bounce 2.4s ease-in-out infinite; }
+@keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.login-container h1 { font-size: 52px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.subtitle { font-size: 18px; color: var(--text-dim); margin-bottom: 40px; max-width: 520px; line-height: 1.5; }
+.features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 40px; width: 100%; max-width: 560px; }
+.feature { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--surface-low); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; color: var(--text-dim); text-align: left; }
+.feature-icon { font-size: 20px; }
+.privacy-note { margin-top: 20px; font-size: 13px; color: var(--text-variant); }
+
+.content { max-width: 1000px; margin: 0 auto; padding: 36px 28px 80px; width: 100%; }
+.content h2 { font-size: 30px; font-weight: 800; letter-spacing: -1px; }
+.hint { color: var(--text-dim); font-size: 14px; margin-top: 6px; }
+
+.artist-input-area { margin-top: 20px; }
+.input-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.input-row input { flex: 1; padding: 14px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.2s; }
+.input-row input:focus { border-color: var(--accent); }
+.input-row input::placeholder { color: var(--text-variant); }
+.btn-add { padding: 14px 22px; background: var(--accent-container); color: #4a0002; border: none; border-radius: var(--radius-sm); font-weight: 700; font-size: 15px; cursor: pointer; transition: all 0.2s; }
+.btn-add:hover { background: var(--accent); }
+.artist-tags { display: flex; flex-wrap: wrap; gap: 8px; min-height: 20px; margin-bottom: 16px; }
+.artist-tag { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--accent-soft); border: 1px solid rgba(255,84,71,0.3); color: var(--text); border-radius: 999px; font-size: 13px; font-weight: 500; }
+.artist-tag button { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1; }
+.artist-tag button:hover { color: var(--accent); }
+.artist-suggestions { margin-top: 6px; }
+.suggestion-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip { padding: 9px 18px; background: var(--surface-high); border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); font-size: 13px; font-family: inherit; cursor: pointer; transition: all 0.2s; }
+.chip:hover { border-color: var(--accent); color: var(--text); background: var(--surface-highest); }
+.search-bar-container { display: flex; align-items: center; gap: 16px; margin-top: 24px; }
+.btn-analyze { padding: 15px 34px; background: var(--accent-container); color: #4a0002; border: none; border-radius: 999px; font-weight: 700; font-size: 15px; cursor: pointer; transition: all 0.2s; }
+.btn-analyze:hover { background: var(--accent); box-shadow: 0 8px 30px var(--accent-glow); }
+.btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+.section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 10px; }
+.search-box input { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 18px; border-radius: 999px; font-size: 14px; width: 260px; outline: none; transition: border-color 0.2s; }
+.search-box input:focus { border-color: var(--accent); }
+.search-box input::placeholder { color: var(--text-variant); }
+
+.loading { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 60px 0; color: var(--text-dim); }
+.spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.progress-bar { width: 300px; height: 5px; background: var(--surface-highest); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent-container); border-radius: 4px; transition: width 0.3s; width: 0%; }
 
-.progress-bar {
-  width: 100%;
-  max-width: 360px;
-  height: 5px;
-  background: var(--card);
-  border-radius: 3px;
-  overflow: hidden;
-}
+.concerts-list { display: flex; flex-direction: column; gap: 14px; margin-top: 20px; }
+.artist-section { margin-bottom: 30px; }
+.artist-section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.artist-section-header h3 { font-size: 21px; font-weight: 700; letter-spacing: -0.5px; }
+.track-badge { font-size: 12px; background: var(--accent-soft); color: var(--accent); padding: 4px 12px; border-radius: 999px; font-weight: 600; }
+.concert-card { background: linear-gradient(to bottom, var(--surface-high), var(--surface)); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center; transition: all 0.25s; }
+.concert-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
+.concert-date-box { text-align: center; min-width: 68px; padding: 12px 14px; background: var(--surface-low); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.concert-date-box .day { font-size: 28px; font-weight: 800; line-height: 1; color: var(--accent); }
+.concert-date-box .month { font-size: 12px; font-weight: 700; color: var(--tertiary); text-transform: uppercase; }
+.concert-date-box .year { font-size: 11px; color: var(--text-variant); }
+.concert-info { display: flex; flex-direction: column; gap: 6px; }
+.concert-venue { font-size: 16px; font-weight: 600; }
+.concert-location { font-size: 13px; color: var(--text-dim); }
+.concert-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.concert-tag { font-size: 11px; padding: 4px 11px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.concert-tag.capacity { background: rgba(255,183,122,0.16); color: var(--tertiary); }
+.concert-tag.source { background: var(--surface-highest); color: var(--text-dim); }
+.concert-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 
-.progress-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--accent-solid);
-  border-radius: 3px;
-  transition: width 0.4s ease;
-}
-
-/* ═══ SECTION CONCERT ═══ */
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 24px;
-}
-
-.search-box input {
-  padding: 10px 16px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 14px;
-  font-family: inherit;
-  outline: none;
-  min-width: 180px;
-}
-
-.search-box input:focus { border-color: var(--accent-solid); }
-
-.artist-section { margin-bottom: 32px; }
-
-.artist-section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-}
-
-.artist-section-header h3 { font-size: 19px; font-weight: 650; }
-
-.track-badge {
-  background: var(--accent-soft);
-  color: var(--accent-solid);
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.concerts-list { display: flex; flex-direction: column; gap: 10px; }
-
-.concert-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  transition: border-color 0.2s;
-}
-
-.concert-card:hover { border-color: var(--accent-solid); }
-
-.concert-date-box {
-  text-align: center;
-  min-width: 56px;
-  padding: 8px;
-  background: var(--accent-soft);
-  border: 1px solid rgba(91,140,255,0.3);
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.concert-date-box .day { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
-.concert-date-box .month { font-size: 11px; color: var(--accent-solid); text-transform: uppercase; letter-spacing: 0.05em; }
-.concert-date-box .year { font-size: 10px; color: var(--text-dim); }
-
-.concert-info { flex: 1; min-width: 0; }
-
-.concert-venue {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.concert-location { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
-
-.concert-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.concert-tag {
-  padding: 3px 9px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.concert-tag.capacity { background: var(--accent-soft); color: var(--accent-solid); }
-.concert-tag.source { background: rgba(255,255,255,0.06); }
-
-.concert-actions { flex-shrink: 0; }
-
-.btn-ticket {
-  padding: 9px 18px;
-  background: var(--text);
-  color: #000;
-  text-decoration: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  transition: opacity 0.2s;
-}
-
-.btn-ticket:hover { opacity: 0.85; }
-
-/* ═══ ÉTAT VIDE ═══ */
-.empty-state { text-align: center; padding: 50px 20px; }
-.empty-icon { font-size: 52px; margin-bottom: 14px; }
-.empty-state h3 { font-size: 20px; font-weight: 650; margin-bottom: 8px; }
+.empty-state { text-align: center; padding: 80px 20px; }
+.empty-icon { font-size: 64px; margin-bottom: 16px; display: block; }
+.empty-state h3 { font-size: 22px; margin-bottom: 8px; }
 .empty-state p { color: var(--text-dim); }
 
-/* ═══ TOAST ═══ */
-.toast-container {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 999;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+.toast { padding: 14px 20px; background: var(--surface-high); border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--text); font-size: 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); animation: slideIn 0.3s ease-out; display: flex; align-items: center; gap: 10px; max-width: 400px; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.toast-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; margin-left: auto; }
 
-.toast {
-  padding: 13px 18px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-  animation: slide 0.25s ease;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-@keyframes slide { from { transform: translateX(60px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-.toast-close { background: none; border: none; color: var(--text-dim); cursor: pointer; }
-
-/* ═══ RESPONSIVE ═══ */
 @media (max-width: 640px) {
+  .login-container h1 { font-size: 34px; }
   .features-grid { grid-template-columns: 1fr; }
-  .concert-card { flex-direction: column; align-items: flex-start; }
+  .concert-card { grid-template-columns: auto 1fr; }
+  .concert-actions { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: flex-start; }
+  .search-box input { width: 100%; }
   .section-header { flex-direction: column; }
-  .topbar { padding: 16px 20px; }
+  .topbar { padding: 12px 16px; }
+  .content { padding: 24px 16px 60px; }
 }
