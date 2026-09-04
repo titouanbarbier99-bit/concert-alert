@@ -7,10 +7,11 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '63a4911a71074a3882bbb5a21a77a767';
-const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '28f6217957824064ba4e9b56bba6e222';
-const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/callback';
-const TICKETMASTER_KEY = process.env.TICKETMASTER_KEY || 'lmSBuxsZpv2SuSIxH6mHowsuNuteTr7s';
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+const REDIRECT_URI = process.env.REDIRECT_URI;
+const TICKETMASTER_KEY = process.env.TICKETMASTER_API_KEY || 'lmSBuxsZpv2SuSIxH6mHowsuNuteTr7s';
+const BANDSINTOWN_KEY = process.env.BANDSINTOWN_KEY || '';
 
 const userSessions = new Map();
 const currentState = new Map();
@@ -40,10 +41,10 @@ function postForm(url, params) {
   });
 }
 
-function get(url, accessToken) {
+function get(url, accessToken, extraHeaders) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
-    const options = { method: 'GET', headers: {} };
+    const options = { method: 'GET', headers: extraHeaders || {} };
     if (accessToken) options.headers.Authorization = 'Bearer ' + accessToken;
     const lib = u.protocol === 'https:' ? https : http;
     const req = lib.request(u, options, res => {
@@ -143,11 +144,11 @@ app.get('/api/my-artists', async (req, res) => {
     const list = [];
     const seen = new Set();
     const popMap = {};
-    top.forEach(a => {
+    for (const a of top) {
       const key = normalizeArtist(a.name);
       if (!seen.has(key)) { seen.add(key); list.push(a.name); }
       if (a.popularity != null) popMap[a.name] = a.popularity;
-    });
+    }
     res.json({ artists: list, popMap });
   } catch (e) {
     res.json({ artists: [], popMap: {} });
@@ -156,12 +157,7 @@ app.get('/api/my-artists', async (req, res) => {
 
 function artistMatches(name, event) {
   const target = name.toLowerCase().replace(/\s+/g, ' ').trim();
-  const attraction = (event.attraction || '').toLowerCase();
-  const eventName = (event.name || '').toLowerCase();
-  if (attraction && attraction === target) return true;
-  if (attraction && (attraction.includes(target) || target.includes(attraction))) return true;
-  if (eventName && eventName.includes(target)) return true;
-  return false;
+  return target === String(event.artist || '').toLowerCase().trim();
 }
 
 function isUpcoming(dateStr) {
@@ -179,7 +175,32 @@ async function findTicketmasterEvents(name, country) {
   if (country) params.set('countryCode', country);
   try {
     const data = await get('https://app.ticketmaster.com/discovery/v2/events.json?' + params.toString());
-    return (data._embedded && data._embedded.events) || [];
+    const events = (data._embedded && data._embedded.events) || [];
+    return events.map(e => ({
+      artist: (e._embedded && e._embedded.attractions && e._embedded.attractions[0] && e._embedded.attractions[0].name) || e.name,
+      venue: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].name) || 'Lieu inconnu',
+      city: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].city && e._embedded.venues[0].city.name) || '',
+      date: e.dates && e.dates.start && e.dates.start.localDate ? e.dates.start.localDate : null,
+      url: e.url || '',
+      source: 'Ticketmaster'
+    }));
+  } catch (e) { return []; }
+}
+
+async function findBandsintownEvents(name) {
+  if (!BANDSINTOWN_KEY) return [];
+  try {
+    const url = 'https://rest.bandsintown.com/artists/' + encodeURIComponent(name) + '/events?app_id=' + encodeURIComponent(BANDSINTOWN_KEY) + '&date=upcoming';
+    const data = await get(url, null, { 'X-Requested-With': 'XMLHttpRequest' });
+    if (!Array.isArray(data)) return [];
+    return data.map(e => ({
+      artist: (e.lineup && e.lineup[0]) || name,
+      venue: (e.venue && e.venue.name) || 'Lieu inconnu',
+      city: (e.venue && e.venue.city) || '',
+      date: e.datetime || null,
+      url: (e.offers && e.offers[0] && e.offers[0].url) || '',
+      source: 'Bandsintown'
+    }));
   } catch (e) { return []; }
 }
 
@@ -188,8 +209,12 @@ app.post('/api/multi-artist', async (req, res) => {
   if (!artists || !Array.isArray(artists)) return res.status(400).json({ error: 'Invalid body' });
   const out = [];
   for (const name of artists) {
-    let events = await findTicketmasterEvents(name, 'FR');
-    const matched = events.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
+    const events = await Promise.all([
+      findTicketmasterEvents(name, 'FR'),
+      findBandsintownEvents(name)
+    ]);
+    const all = events.flat();
+    const matched = all.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
     matched.sort((a, b) => new Date(a.date) - new Date(b.date));
     if (matched.length === 0) { out.push({ name, popularity: null, concert: null }); continue; }
     const c = matched[0];
@@ -197,13 +222,13 @@ app.post('/api/multi-artist', async (req, res) => {
       name,
       popularity: null,
       concert: {
-        venue: c.venue || 'Lieu inconnu',
-        city: c.city || '',
-        date: c.date || null,
-        country: 'FR',
-        capacity: c.capacity || null,
-        source: 'Ticketmaster',
-        url: c.url || ''
+        venue: c.venue,
+        city: c.city,
+        date: c.date,
+        country: '',
+        capacity: null,
+        source: c.source,
+        url: c.url
       }
     });
   }
@@ -212,4 +237,6 @@ app.post('/api/multi-artist', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log('🎵 Concert Alert running on port ' + PORT);
+  console.log('Ticketmaster key set: ' + !!TICKETMASTER_KEY);
+  console.log('Bandsintown key set: ' + !!BANDSINTOWN_KEY);
 });
