@@ -18,21 +18,42 @@ function genRand(len) { return crypto.randomBytes(len).toString('hex').slice(0, 
 function b64(str) { return Buffer.from(str).toString('base64'); }
 function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim(); }
 function isFR(c) { var n = norm(c); return n === 'fr' || n === 'france' || n.indexOf('france') > -1; }
-var MAJOR_VENUES = ['stade de france','velodrome','orange velodrome','la defense arena','paris la defense arena','accor arena','bercy','zenith','le zenith','zenith de paris','adidas arena','dock pullman','la seine musicale','le dome de paris','halle tony garnier','ldlc arena','arkaea arena','zenith de nantes','zenith de toulouse','zenith de lille','le grand rex','parc des prince','stade pierre-mauroy','matmut atlantique','allianz riviera','roazhon park','philharmonie de paris','salle pleyel','theatre des champs','l olympia','olympia','le bataclan','la cigale','stade vélodrome','parc ol','fnac'];
+var MAJOR_VENUES = ['stade de france','velodrome','orange velodrome','la defense arena','paris la defense arena','accor arena','bercy','zenith','le zenith','zenith de paris','adidas arena','dock pullman','la seine musicale','le dome de paris','halle tony garnier','ldlc arena','arkaea arena','zenith de nantes','zenith de toulouse','zenith de lille','le grand rex','parc des prince','stade pierre-mauroy','matmut atlantique','allianz riviera','roazhon park','philharmonie de paris','salle pleyel','theatre des champs','l olympia','olympia','le bataclan','la cigale','stade velodrome','parc ol','fnac'];
 function isMajorVN(v) { var n = norm(v); return MAJOR_VENUES.some(function(m) { return n.indexOf(m) > -1 || m.indexOf(n) > -1; }); }
+var SPOTIFY_TOKEN = null;
+async function spotifyClientToken() {
+  if (SPOTIFY_TOKEN) return SPOTIFY_TOKEN;
+  var tr = await axios.post('https://accounts.spotify.com/api/token', 'grant_type=client_credentials', { headers: { 'Authorization': 'Basic ' + b64(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET), 'Content-Type': 'application/x-www-form-urlencoded' } });
+  SPOTIFY_TOKEN = tr.data.access_token;
+  return SPOTIFY_TOKEN;
+}
+async function getArtistPopularity(name) {
+  try {
+    var token = await spotifyClientToken();
+    var r = await axios.get('https://api.spotify.com/v1/search', { params: { q: name, type: 'artist', limit: 1 }, headers: { 'Authorization': 'Bearer ' + token } });
+    var items = r.data && r.data.artists && r.data.artists.items;
+    if (!items || items.length === 0) return 0;
+    return items[0].popularity || 0;
+  } catch (e) { return 0; }
+}
 function matchArtist(name, ev) {
   var n = norm(name);
   var lineup = (ev.lineup || []).map(norm);
   var attr = ((ev._embedded && ev._embedded.attractions) || []).map(function(a) { return norm(a.name); });
   var en = norm(ev.name || '');
-  for (var i = 0; i < lineup.length; i++) { if (lineup[i] === n) return true; }
-  for (var j = 0; j < attr.length; j++) { if (attr[j] === n) return true; }
+  if (lineup.indexOf(n) > -1) return true;
+  if (attr.indexOf(n) > -1) return true;
   if (en === n) return true;
-  if (en.indexOf(n) > -1) return true;
-  var words = n.split(' ').filter(function(w) { return w.length > 2; });
-  if (words.length >= 2) { var all = en + ' ' + lineup.join(' ') + ' ' + attr.join(' '); return words.every(function(w) { return all.indexOf(w) > -1; }); }
-  if (words.length === 1) { var all2 = en + ' ' + lineup.join(' ') + ' ' + attr.join(' '); return all2.split(' ').some(function(t) { return t === words[0]; }); }
-  return false;
+  if (n.indexOf(' ') === -1) {
+    return lineup.some(function(l) { return l.split(' ').indexOf(n) > -1; }) ||
+           attr.some(function(a) { return a.split(' ').indexOf(n) > -1; });
+  }
+  var n2 = n;
+  var found = false;
+  if (lineup.join(' | ').indexOf(n2) > -1) found = true;
+  if (attr.join(' | ').indexOf(n2) > -1) found = true;
+  if (en.indexOf(n2) > -1) found = true;
+  return found;
 }
 app.get('/login', function(req, res) {
   var s = genRand(16);
@@ -58,7 +79,7 @@ async function searchTM(name) {
       var cc = (v.country && v.country.countryCode) || '';
       return { artist: name, date: (e.dates && e.dates.start && (e.dates.start.dateTime || e.dates.start.localDate)) || '', venue: v.name || 'Salle inconnue', city: (v.city && v.city.name) || '', country: cc, ticketUrl: e.url || '', lineup: (e._embedded && e._embedded.attractions || []).map(function(a) { return a.name; }) || [], source: 'Ticketmaster', isFrance: isFR(cc), isMajorVenue: isMajorVN(v.name || '') };
     });
-  } catch (err) { console.error('TM error ' + name + ':', err.response ? err.response.status : '', err.message); return []; }
+  } catch (err) { return []; }
 }
 async function searchBIT(name) {
   var url = 'https://rest.bandsintown.com/artists/' + encodeURIComponent(name) + '/events?app_id=' + BANDSINTOWN_APP_ID;
@@ -69,7 +90,7 @@ async function searchBIT(name) {
       var cc = (e.venue && e.venue.country) || '';
       return { artist: name, date: e.datetime, venue: (e.venue && e.venue.name) || 'Salle inconnue', city: (e.venue && e.venue.city) || '', country: cc, ticketUrl: e.url || '', lineup: e.lineup || [], source: 'Bandsintown', isFrance: isFR(cc), isMajorVenue: isMajorVN((e.venue && e.venue.name) || '') };
     });
-  } catch (err) { console.error('BIT error ' + name + ':', err.response ? err.response.status : '', err.message); return []; }
+  } catch (err) { return []; }
 }
 async function searchSK(name) {
   try {
@@ -91,12 +112,14 @@ async function searchSK(name) {
   } catch (err) { return []; }
 }
 async function searchConcerts(name) {
+  var pop = await getArtistPopularity(name);
   var r = await Promise.all([searchTM(name), searchBIT(name), searchSK(name)]);
   var all = r[0].concat(r[1]).concat(r[2]);
   var seen = {};
   var uniq = [];
   for (var i = 0; i < all.length; i++) {
     var c = all[i];
+    c.popularity = pop;
     var key = (c.date || '').slice(0, 10) + '-' + norm(c.venue);
     if (seen[key]) continue;
     seen[key] = true;
