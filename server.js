@@ -66,6 +66,13 @@ function normalizeArtist(name) {
   return name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+app.use((req, res, next) => {
+  const header = req.headers.cookie || '';
+  const match = header.match(/ca_session=([^;]+)/);
+  req.cookies = match ? { ca_session: match[1] } : {};
+  next();
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.get('/login', (req, res) => {
@@ -97,7 +104,7 @@ app.get('/callback', async (req, res) => {
     });
     const tokenId = crypto.randomBytes(24).toString('hex');
     userSessions.set(tokenId, token.access_token);
-    res.cookie('ca_session', tokenId, { httpOnly: true, maxAge: 60 * 60 * 24 * 7 });
+    res.cookie('ca_session', tokenId, { maxAge: 60 * 60 * 24 * 7 });
     res.redirect('/');
   } catch (e) {
     res.status(500).send('Login failed: ' + e.message);
@@ -110,13 +117,6 @@ function getToken(req) {
   return userSessions.get(id);
 }
 
-app.use((req, res, next) => {
-  const header = req.headers.cookie || '';
-  const match = header.match(/ca_session=([^;]+)/);
-  req.cookies = match ? { ca_session: match[1] } : {};
-  next();
-});
-
 app.get('/api/me', async (req, res) => {
   const token = getToken(req);
   if (!token) return res.json({ authenticated: false });
@@ -128,9 +128,9 @@ app.get('/api/me', async (req, res) => {
   }
 });
 
-async function getTopArtists(sess, limit) {
+async function getTopArtists(token, limit) {
   try {
-    const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', sess);
+    const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', token);
     return (data.items || []).map(a => ({ name: a.name, popularity: a.popularity || null }));
   } catch (e) { return []; }
 }
