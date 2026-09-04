@@ -1,172 +1,118 @@
-var spotifyToken = new URLSearchParams(window.location.search).get('token') || '';
-var artistList = [];
-var allConcerts = [];
+let artistList = [];
+let allConcerts = [];
+let pollingInterval = null;
 
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-  document.getElementById(id).classList.add('active');
-}
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  if (token) {
+    autoSearchFromSpotify(token);
+  }
+})();
 
-if (spotifyToken) {
-  loadTopArtists();
-}
-
-async function loadTopArtists() {
-  if (!spotifyToken) { showScreen('screen-artists'); return; }
+async function autoSearchFromSpotify(token) {
   try {
-    var res = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10&time_range=medium_term', { headers: { 'Authorization': 'Bearer ' + spotifyToken } });
-    var data = await res.json();
-    var items = data.items || [];
-    for (var i = 0; i < items.length; i++) {
-      addArtistDirect(items[i].name);
+    const res = await fetch(`/api/my-artists?token=${encodeURIComponent(token)}`);
+    const data = await res.json();
+    if (data.artists && data.artists.length > 0) {
+      artistList = data.artists.map(a => a.name);
+      renderTags();
+      updateSearchButton();
+      await searchConcerts();
+    } else {
+      showToast('Aucun artiste trouvé. Accède au moins à une playlist.');
+      showScreen('screen-artists');
     }
-    showScreen('screen-artists');
   } catch (err) {
+    console.error('Auto search error:', err);
     showScreen('screen-artists');
   }
+}
+
+function showScreen(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
 }
 
 function addArtist() {
-  var input = document.getElementById('artist-input');
-  var name = input.value.trim();
+  const input = document.getElementById('artist-input');
+  const name = input.value.trim();
   if (!name) return;
-  if (artistList.some(function(a) { return a.name.toLowerCase() === name.toLowerCase(); })) {
-    showToast('Deja ajoute');
+  if (artistList.some(a => a.toLowerCase() === name.toLowerCase())) {
+    showToast('Cet artiste est déjà dans la liste');
     input.value = '';
     return;
   }
-  artistList.push({ name: name, checked: true });
+  artistList.push(name);
   input.value = '';
-  renderList();
+  renderTags();
+  updateSearchButton();
+  input.focus();
 }
 
 function addArtistDirect(name) {
-  if (artistList.some(function(a) { return a.name.toLowerCase() === name.toLowerCase(); })) return;
-  artistList.push({ name: name, checked: true });
-  renderList();
-}
-
-function toggleArtist(index) {
-  artistList[index].checked = !artistList[index].checked;
-  renderList();
+  if (artistList.some(a => a.toLowerCase() === name.toLowerCase())) {
+    showToast('Déjà ajouté');
+    return;
+  }
+  artistList.push(name);
+  renderTags();
+  updateSearchButton();
 }
 
 function removeArtist(index) {
   artistList.splice(index, 1);
-  renderList();
+  renderTags();
+  updateSearchButton();
 }
 
-function clearAllArtists() {
-  artistList = [];
-  renderList();
+function renderTags() {
+  const container = document.getElementById('artist-tags');
+  container.innerHTML = artistList.map((a, i) =>
+    `<span class="artist-tag">${a} <button onclick="removeArtist(${i})">✕</button></span>`
+  ).join('');
+  document.getElementById('artist-count').textContent =
+    artistList.length > 0 ? `${artistList.length} artiste${artistList.length > 1 ? 's' : ''}` : '';
 }
 
-function selectedArtists() {
-  return artistList.filter(function(a) { return a.checked; }).map(function(a) { return a.name; });
-}
-
-function renderList() {
-  var container = document.getElementById('artist-list');
-  if (artistList.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-dim);font-size:13px">Aucun artiste. Ajoute-en ou clique sur une suggestion.</p>';
-  } else {
-    container.innerHTML = artistList.map(function(a, i) {
-      return '<label class="artist-row"><input type="checkbox" ' + (a.checked ? 'checked' : '') + ' onchange="toggleArtist(' + i + ')"><span class="artist-check">' + a.name + '</span><button class="artist-remove" onclick="removeArtist(' + i + ')">x</button></label>';
-    }).join('');
-  }
-  var count = artistList.filter(function(a) { return a.checked; }).length;
-  document.getElementById('artist-count').textContent = count + ' artiste' + (count !== 1 ? 's' : '') + ' coche';
-  document.getElementById('btn-search').disabled = count === 0;
+function updateSearchButton() {
+  document.getElementById('btn-search').disabled = artistList.length === 0;
 }
 
 async function searchConcerts() {
-  var names = selectedArtists();
-  if (names.length === 0) return;
+  if (artistList.length === 0) return;
   showScreen('screen-alerts');
-  var loading = document.getElementById('artists-loading');
-  var container = document.getElementById('concerts-container');
-  var noConcerts = document.getElementById('no-concerts');
+  const loading = document.getElementById('artists-loading');
+  const container = document.getElementById('concerts-container');
+  const noConcerts = document.getElementById('no-concerts');
   loading.style.display = 'flex';
   container.innerHTML = '';
   noConcerts.style.display = 'none';
-  document.getElementById('artist-summary').textContent = names.length + ' artiste(s) en cours de recherche...';
+
+  document.getElementById('artist-summary').textContent = `${artistList.length} artiste${artistList.length > 1 ? 's' : ''} en cours de recherche...`;
+
   allConcerts = [];
-  for (var i = 0; i < names.length; i++) {
-    var artist = names[i];
-    var progress = document.getElementById('progress-fill');
-    progress.style.width = ((i + 1) / names.length * 100) + '%';
-    document.getElementById('loading-text').textContent = 'Recherche : ' + artist + ' (' + (i + 1) + '/' + names.length + ')...';
+  const total = artistList.length;
+
+  for (let i = 0; i < total; i++) {
+    const artist = artistList[i];
+    const progress = document.getElementById('progress-fill');
+    progress.style.width = `${((i + 1) / total) * 100}%`;
+    document.getElementById('loading-text').textContent = `Recherche : ${artist} (${i + 1}/${total})...`;
+
     try {
-      var res = await fetch('/api/concerts/' + encodeURIComponent(artist));
-      var data = await res.json();
+      const res = await fetch(`/api/concerts/${encodeURIComponent(artist)}`);
+      const data = await res.json();
       if (data.concerts && data.concerts.length > 0) {
-        allConcerts.push.apply(allConcerts, data.concerts);
+        allConcerts.push(...data.concerts);
       }
-    } catch (err) {}
-  }
-  document.getElementById('progress-fill').style.width = '100%';
-  document.getElementById('loading-text').textContent = 'Termine !';
-  setTimeout(function() { loading.style.display = 'none'; }, 500);
-  document.getElementById('artist-summary').textContent = allConcerts.length + ' concert(s) trouve';
-  renderConcerts(allConcerts);
-}
-
-function renderConcerts(concerts) {
-  var container = document.getElementById('concerts-container');
-  var noConcerts = document.getElementById('no-concerts');
-  container.innerHTML = '';
-  if (concerts.length === 0) {
-    noConcerts.style.display = 'block';
-    document.getElementById('alerts-count').textContent = '0 concert';
-    return;
-  }
-  noConcerts.style.display = 'none';
-  document.getElementById('alerts-count').textContent = concerts.length + ' concert' + (concerts.length > 1 ? 's' : '');
-  var grouped = {};
-  for (var ci = 0; ci < concerts.length; ci++) {
-    var c = concerts[ci];
-    if (!grouped[c.artist]) grouped[c.artist] = [];
-    grouped[c.artist].push(c);
-  }
-  var names = Object.keys(grouped);
-  for (var ai = 0; ai < names.length; ai++) {
-    var artist = names[ai];
-    var ac = grouped[artist];
-    var section = document.createElement('div');
-    section.className = 'artist-section';
-    section.innerHTML = '<div class="artist-section-header"><h3>' + artist + '</h3><span class="track-badge">' + ac.length + ' concert' + (ac.length > 1 ? 's' : '') + '</span></div>';
-    for (var j = 0; j < ac.length; j++) {
-      var c2 = ac[j];
-      var date = new Date(c2.date);
-      var day = date.getDate();
-      var month = date.toLocaleDateString('fr-FR', { month: 'short' });
-      var year = date.getFullYear();
-      var fullDate = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      var hourStr = c2.date.indexOf('T') > -1 ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
-      var location = [c2.city, c2.country].filter(Boolean).join(', ');
-      var source = c2.source ? '<span class="concert-tag source">' + c2.source + '</span>' : '';
-      var card = document.createElement('div');
-      card.className = 'concert-card';
-      card.innerHTML = '<div class="concert-date-box"><div class="day">' + day + '</div><div class="month">' + month + '</div><div class="year">' + year + '</div></div><div class="concert-info"><div class="concert-venue">' + c2.venue + '</div><div class="concert-location">' + location + '</div><div class="concert-tags"><span class="concert-tag">' + fullDate + '</span>' + (hourStr ? '<span class="concert-tag">' + hourStr + '</span>' : '') + source + '</div></div><div class="concert-actions">' + (c2.ticketUrl ? '<a href="' + c2.ticketUrl + '" target="_blank" class="btn-ticket">Billets</a>' : '') + '</div>';
-      section.appendChild(card);
+    } catch (err) {
+      console.error(`Error searching ${artist}:`, err);
     }
-    container.appendChild(section);
   }
-}
 
-function filterConcerts(query) {
-  if (!query.trim()) { renderConcerts(allConcerts); return; }
-  var q = query.toLowerCase();
-  renderConcerts(allConcerts.filter(function(c) {
-    return c.artist.toLowerCase().indexOf(q) > -1 || c.venue.toLowerCase().indexOf(q) > -1 || c.city.toLowerCase().indexOf(q) > -1;
-  }));
-}
+  document.getElementById('progress-fill').style.width = '100%';
+  document.getElementById('loading-text').textContent = 'Terminé !';
+  setTimeout(() => { loading.style.display = 'none'; }, 500);
 
-function showToast(message) {
-  var container = document.getElementById('toast-container');
-  var toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.innerHTML = message + '<button class="toast-close" onclick="this.parentElement.remove()">x</button>';
-  container.appendChild(toast);
-  setTimeout(function() { toast.remove(); }, 3000);
-}
+  document.getElementById('artist-summary').textCon
