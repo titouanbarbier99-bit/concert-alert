@@ -14,6 +14,7 @@ const BANDSINTOWN_APP_ID = process.env.BANDSINTOWN_APP_ID || 'concert-alert';
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 var concertCache = new Map();
+var artistPopularity = new Map();
 function genRand(len) { return crypto.randomBytes(len).toString('hex').slice(0, len); }
 function b64(str) { return Buffer.from(str).toString('base64'); }
 function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').trim(); }
