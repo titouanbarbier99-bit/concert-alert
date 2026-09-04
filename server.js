@@ -11,7 +11,6 @@ const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const TICKETMASTER_KEY = process.env.TICKETMASTER_API_KEY || 'lmSBuxsZpv2SuSIxH6mHowsuNuteTr7s';
-const BANDSINTOWN_KEY = process.env.BANDSINTOWN_KEY || '';
 
 const userSessions = new Map();
 const currentState = new Map();
@@ -112,6 +111,13 @@ app.get('/callback', async (req, res) => {
   }
 });
 
+app.get('/logout', (req, res) => {
+  const id = req.cookies ? req.cookies.ca_session : null;
+  if (id && userSessions.has(id)) userSessions.delete(id);
+  res.clearCookie('ca_session');
+  res.redirect('/');
+});
+
 function getToken(req) {
   const id = req.cookies ? req.cookies.ca_session : null;
   if (!id || !userSessions.has(id)) return null;
@@ -193,36 +199,13 @@ async function findTicketmasterEvents(name) {
   } catch (e) { return []; }
 }
 
-async function findBandsintownEvents(name) {
-  if (!BANDSINTOWN_KEY) return [];
-  try {
-    const url = 'https://rest.bandsintown.com/artists/' + encodeURIComponent(name) + '/events?app_id=' + encodeURIComponent(BANDSINTOWN_KEY) + '&date=upcoming';
-    const data = await get(url, null, { 'X-Requested-With': 'XMLHttpRequest' });
-    if (!Array.isArray(data)) return [];
-    return data.map(e => ({
-      artist: (e.lineup && e.lineup[0]) || name,
-      eventName: name,
-      venue: (e.venue && e.venue.name) || 'Lieu inconnu',
-      city: (e.venue && e.venue.city) || '',
-      country: '',
-      date: e.datetime || null,
-      url: (e.offers && e.offers[0] && e.offers[0].url) || '',
-      source: 'Bandsintown'
-    }));
-  } catch (e) { return []; }
-}
-
 app.post('/api/multi-artist', async (req, res) => {
   const { artists } = req.body;
   if (!artists || !Array.isArray(artists)) return res.status(400).json({ error: 'Invalid body' });
   const out = [];
   for (const name of artists) {
-    const events = await Promise.all([
-      findTicketmasterEvents(name),
-      findBandsintownEvents(name)
-    ]);
-    const all = events.flat();
-    const matched = all.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
+    let events = await findTicketmasterEvents(name);
+    const matched = events.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
     matched.sort((a, b) => new Date(a.date) - new Date(b.date));
     if (matched.length === 0) { out.push({ name, popularity: null, concert: null }); continue; }
     const c = matched[0];
@@ -246,5 +229,4 @@ app.post('/api/multi-artist', async (req, res) => {
 app.listen(PORT, () => {
   console.log('🎵 Concert Alert running on port ' + PORT);
   console.log('Ticketmaster key set: ' + !!TICKETMASTER_KEY);
-  console.log('Bandsintown key set: ' + !!BANDSINTOWN_KEY);
 });
