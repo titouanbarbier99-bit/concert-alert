@@ -58,7 +58,7 @@ function matchArtist(name, ev) {
 }
 app.get('/login', function(req, res) {
   var s = genRand(16);
-  var scope = 'user-top-read user-read-recently-played user-read-email';
+  var scope = 'user-top-read user-read-recently-played user-read-email playlist-read-private playlist-read-collaborative';
   res.redirect('https://accounts.spotify.com/authorize?response_type=code&client_id=' + encodeURIComponent(SPOTIFY_CLIENT_ID) + '&scope=' + encodeURIComponent(scope) + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) + '&state=' + s + '&show_dialog=true');
 });
 app.get('/callback', async function(req, res) {
@@ -141,6 +141,35 @@ app.get('/api/concerts/:artist', async function(req, res) {
   res.json({ concerts: concerts });
 });
 app.get('/api/health', function(req, res) { res.json({ status: 'ok', cacheSize: concertCache.size, uptime: process.uptime() }); });
+app.get('/api/playlists', async function(req, res) {
+  var token = req.query.token;
+  if (!token) return res.json({ playlists: [] });
+  try {
+    var pl = await axios.get('https://api.spotify.com/v1/me/playlists?limit=50', { headers: { 'Authorization': 'Bearer ' + token } });
+    var items = (pl.data && pl.data.items) || [];
+    return res.json({ playlists: items.map(function(p) { return { id: p.id, name: p.name, tracks: p.tracks && p.tracks.total || 0 }; }) });
+  } catch (err) { return res.json({ error: 'PL_FAIL', status: err.response ? err.response.status : 0 }); }
+});
+app.get('/api/playlist-artists', async function(req, res) {
+  var token = req.query.token;
+  var pid = req.query.id;
+  if (!token || !pid) return res.json({ artists: [] });
+  try {
+    var tr2 = await axios.get('https://api.spotify.com/v1/playlists/' + pid + '/tracks?limit=50', { headers: { 'Authorization': 'Bearer ' + token } });
+    var items = (tr2.data && tr2.data.items) || [];
+    var seen = {};
+    var artists = [];
+    for (var i = 0; i < items.length; i++) {
+      var tr = items[i].track;
+      if (!tr || !tr.artists) continue;
+      for (var j = 0; j < tr.artists.length; j++) {
+        var an = tr.artists[j].name;
+        if (an && !seen[an]) { seen[an] = true; artists.push(an); }
+      }
+    }
+    return res.json({ artists: artists });
+  } catch (err) { return res.json({ error: 'TRACKS_FAIL', status: err.response ? err.response.status : 0 }); }
+});
 app.get('*', function(req, res) { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 var server = http.createServer(app);
 server.listen(PORT, function() { console.log('Concert Alert running at http://localhost:' + PORT); });
