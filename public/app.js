@@ -8,6 +8,19 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+function logout() {
+  fetch('/logout').then(() => {
+    artists = [];
+    artistPop = {};
+    _allRendered = [];
+    showScreen('screen-login');
+    document.getElementById('concerts-container').innerHTML = '';
+    document.getElementById('artist-tags').innerHTML = '';
+    document.getElementById('btn-search').disabled = true;
+    document.getElementById('artist-count').textContent = '';
+  });
+}
+
 function showToast(msg, type = 'info') {
   const t = document.createElement('div');
   t.className = 'toast';
@@ -62,35 +75,6 @@ function norm(s) {
   return (s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-async function fetchBandsintownDirect(name) {
-  try {
-    const res = await fetch('https://rest.bandsintown.com/artists/' + encodeURIComponent(name) + '/events?app_id=concert-alert&date=upcoming');
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    const target = norm(name);
-    return data
-      .filter(e => {
-        const lineup = (e.lineup && e.lineup[0]) || name;
-        const tn = norm(lineup);
-        return tn === target || tn.includes(target) || target.includes(tn);
-      })
-      .map(e => ({
-        name,
-        popularity: null,
-        concert: {
-          venue: (e.venue && e.venue.name) || 'Lieu inconnu',
-          city: (e.venue && e.venue.city) || '',
-          country: (e.venue && e.venue.country) || '',
-          date: e.datetime || null,
-          capacity: null,
-          source: 'Bandsintown',
-          url: (e.offers && e.offers[0] && e.offers[0].url) || ''
-        }
-      }));
-  } catch (e) { return []; }
-}
-
 async function searchConcerts() {
   if (artists.length === 0) return;
   showScreen('screen-alerts');
@@ -112,19 +96,14 @@ async function searchConcerts() {
     });
     if (res.ok) {
       const data = await res.json();
-      (data || []).forEach(r => {
-        if (r && r.concert) ticketByName.set(r.name, r);
-      });
+      (data || []).forEach(r => { if (r && r.concert) ticketByName.set(r.name, r); });
     }
   } catch (e) {}
 
-  // Ajouter la recherche Bandsintown directe (navigateur)
   for (const name of artists) {
-    const bit = await fetchBandsintownDirect(name);
     const tm = ticketByName.get(name);
     const options = [];
     if (tm) options.push(tm);
-    if (bit.length) options.push(...bit);
     if (options.length === 0) {
       results.push({ name, popularity: artistPop[name] || null, concert: null });
       continue;
