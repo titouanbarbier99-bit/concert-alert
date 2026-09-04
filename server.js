@@ -127,8 +127,7 @@ async function searchConcerts(name) {
     uniq.push(c);
   }
   uniq.sort(function(a, b) {
-    if (a.isMajorVenue !== b.isMajorVenue) return a.isMajorVenue ? -1 : 1;
-    if (a.isFrance !== b.isFrance) return a.isFrance ? -1 : 1;
+    if (a.artist !== b.artist) return (b.popularity || 0) - (a.popularity || 0);
     return new Date(a.date) - new Date(b.date);
   });
   return uniq;
