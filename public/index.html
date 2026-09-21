@@ -116,7 +116,29 @@
         <p class="hint" id="artist-summary"></p>
       </div>
       <div class="search-box">
-        <input type="text" id="search-artist" placeholder="Filtrer... (tape favoris pour ❤️)" oninput="filterConcerts(this.value)">
+        <input type="text" id="search-artist" placeholder="Filtrer... (tape favoris pour ❤️)" oninput="applyFilters()">
+      </div>
+    </div>
+    <div class="filter-bar glass-panel">
+      <select id="country-filter" onchange="applyFilters()">
+        <option value="ALL">🌍 Monde entier</option>
+        <option value="FR">🇫🇷 France uniquement</option>
+      </select>
+      <div id="fr-regions" class="fr-regions" style="display:none">
+        <button class="chip region-chip" data-region="ALL" onclick="selectRegion('ALL')">Toute la France</button>
+        <button class="chip region-chip" data-region="IDF" onclick="selectRegion('IDF')">Île-de-France</button>
+        <button class="chip region-chip" data-region="ARA" onclick="selectRegion('ARA')">Auvergne-Rhône-Alpes</button>
+        <button class="chip region-chip" data-region="PAC" onclick="selectRegion('PAC')">Provence (PACA)</button>
+        <button class="chip region-chip" data-region="OCC" onclick="selectRegion('OCC')">Occitanie</button>
+        <button class="chip region-chip" data-region="NAQ" onclick="selectRegion('NAQ')">Nouvelle-Aquitaine</button>
+        <button class="chip region-chip" data-region="HDF" onclick="selectRegion('HDF')">Hauts-de-France</button>
+        <button class="chip region-chip" data-region="GES" onclick="selectRegion('GES')">Grand Est</button>
+        <button class="chip region-chip" data-region="BRE" onclick="selectRegion('BRE')">Bretagne</button>
+        <button class="chip region-chip" data-region="PDL" onclick="selectRegion('PDL')">Pays de la Loire</button>
+        <button class="chip region-chip" data-region="NOR" onclick="selectRegion('NOR')">Normandie</button>
+        <button class="chip region-chip" data-region="BFC" onclick="selectRegion('BFC')">Bourgogne-Fr-Comté</button>
+        <button class="chip region-chip" data-region="CVL" onclick="selectRegion('CVL')">Centre-Val de Loire</button>
+        <button class="chip region-chip" data-region="COR" onclick="selectRegion('COR')">Corse</button>
       </div>
     </div>
     <div id="artists-loading" class="loading" style="display:none">
