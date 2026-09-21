@@ -68,10 +68,6 @@ function removeArtist(i) {
   updateArtistCount();
 }
 
-function norm(s) {
-  return (s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-}
-
 async function searchConcerts() {
   if (artists.length === 0) return;
   showScreen('screen-alerts');
@@ -99,23 +95,69 @@ async function searchConcerts() {
 
   for (const name of artists) {
     const tm = ticketByName.get(name);
-    const options = [];
-    if (tm) options.push(tm);
-    if (options.length === 0) {
+    if (!tm) {
       results.push({ name, popularity: artistPop[name] || null, concert: null });
       continue;
     }
-    options.sort((a, b) => new Date(a.concert.date) - new Date(b.concert.date));
-    results.push({ name, popularity: artistPop[name] || null, concert: options[0].concert });
+    results.push({ name, popularity: artistPop[name] || null, concert: tm.concert });
   }
 
   loading.style.display = 'none';
   const withConcerts = results.filter(r => r.concert);
-  if (withConcerts.length === 0) { noConcerts.style.display = 'block'; return; }
-  withConcerts.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-  renderConcerts(withConcerts);
-  const count = results.filter(r => r.concert).length;
-  document.getElementById('alerts-count').textContent = count + ' concert' + (count > 1 ? 's' : '');
+  if (withConcerts.length === 0) { noConcerts.style.display = 'block'; }
+  else {
+    withConcerts.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    renderConcerts(withConcerts);
+    const count = withConcerts.length;
+    document.getElementById('alerts-count').textContent = count + ' concert' + (count > 1 ? 's' : '');
+  }
+  // AJOUT : top monde en dessous, sans toucher au dessus
+  loadTopWorld();
+}
+
+// === AJOUT : charge le top monde et l'affiche en dessous ===
+async function loadTopWorld() {
+  const container = document.getElementById('concerts-container');
+  try {
+    const res = await fetch('/api/top-world');
+    if (!res.ok) return;
+    const list = await res.json();
+    if (!list || !list.length) return;
+    const title = document.createElement('div');
+    title.className = 'artist-section-header';
+    title.style.marginTop = '30px';
+    title.innerHTML = '<h3>Top monde 🌍</h3><span class="track-badge">Suggestions</span>';
+    container.appendChild(title);
+    renderTopWorld(list);
+  } catch (e) {}
+}
+
+function renderTopWorld(list) {
+  const container = document.getElementById('concerts-container');
+  list.forEach(r => {
+    if (!r.concert) return;
+    const date = formatDate(r.concert.date);
+    const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
+    const s = document.createElement('div');
+    s.className = 'artist-section';
+    s.innerHTML = `
+      <div class="artist-section-header">
+        <h3>${r.name}</h3>
+      </div>
+      <div class="concert-card">
+        ${monthHtml}
+        <div class="concert-info">
+          <div class="concert-venue">${r.concert.venue}</div>
+          <div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div>
+          <div class="concert-tags">
+            <span class="concert-tag source">${r.concert.source}</span>
+          </div>
+        </div>
+        ${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}
+      </div>
+    `;
+    container.appendChild(s);
+  });
 }
 
 function formatDate(iso) {
@@ -145,7 +187,6 @@ function renderConcerts(results) {
           <div class="concert-venue">${r.concert.venue}</div>
           <div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div>
           <div class="concert-tags">
-            ${r.concert.capacity ? `<span class="concert-tag capacity">${r.concert.capacity} places</span>` : ''}
             <span class="concert-tag source">${r.concert.source}</span>
           </div>
         </div>
@@ -184,7 +225,6 @@ function filterConcerts(value) {
           <div class="concert-venue">${r.concert.venue}</div>
           <div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div>
           <div class="concert-tags">
-            ${r.concert.capacity ? `<span class="concert-tag capacity">${r.concert.capacity} places</span>` : ''}
             <span class="concert-tag source">${r.concert.source}</span>
           </div>
         </div>
