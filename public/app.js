@@ -12,8 +12,6 @@ function showScreen(id) {
 }
 function logout() { window.location.href = '/logout'; }
 function changeAccount() { fetch('/logout').then(() => { window.location.href = '/login'; }); }
-
-// === TIROIR FAVORIS ===
 function toggleFavs(open) {
   document.getElementById('favs-drawer').classList.toggle('open', open);
   document.getElementById('favs-overlay').classList.toggle('open', open);
@@ -27,13 +25,8 @@ function toggleFav(btn) {
   if (!c) return;
   let favs = getFavs();
   const k = favKey(c);
-  if (favs.some(f => favKey(f) === k)) {
-    favs = favs.filter(f => favKey(f) !== k);
-    showToast('Retiré des favoris', 'info');
-  } else {
-    favs.push(c);
-    showToast('Ajouté aux favoris ❤️', 'success');
-  }
+  if (favs.some(f => favKey(f) === k)) { favs = favs.filter(f => favKey(f) !== k); showToast('Retiré des favoris', 'info'); }
+  else { favs.push(c); showToast('Ajouté aux favoris ❤️', 'success'); }
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
   syncFavButtons();
   updateFavsCount();
@@ -72,8 +65,7 @@ function renderFavsList() {
 }
 function removeFav(kEnc) {
   const k = decodeURIComponent(kEnc);
-  let favs = getFavs().filter(f => favKey(f) !== k);
-  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  localStorage.setItem(FAV_KEY, JSON.stringify(getFavs().filter(f => favKey(f) !== k)));
   syncFavButtons();
   renderFavsList();
 }
@@ -83,7 +75,6 @@ function favButton(c) {
   const on = isFav(c);
   return `<button class="btn-fav${on ? ' active' : ''}" data-fid="${fid}" onclick="toggleFav(this)" title="Mettre en favori">${on ? '❤️' : '🤍'}</button>`;
 }
-
 function showToast(msg, type = 'info') {
   const t = document.createElement('div');
   t.className = 'toast';
@@ -128,6 +119,11 @@ function removeArtist(i) {
   document.getElementById('btn-search').disabled = artists.length === 0;
   updateArtistCount();
 }
+function getAllConcerts(r) {
+  if (r.concerts && r.concerts.length) return r.concerts;
+  if (r.concert) return [r.concert];
+  return [];
+}
 async function searchConcerts() {
   if (artists.length === 0) return;
   showScreen('screen-alerts');
@@ -138,7 +134,6 @@ async function searchConcerts() {
   container.innerHTML = '';
   noConcerts.style.display = 'none';
   const results = [];
-  const ticketByName = new Map();
   try {
     const res = await fetch('/api/multi-artist', {
       method: 'POST',
@@ -147,21 +142,17 @@ async function searchConcerts() {
     });
     if (res.ok) {
       const data = await res.json();
-      (data || []).forEach(r => { if (r && r.concert) ticketByName.set(r.name, r); });
+      (data || []).forEach(r => { results.push({ name: r.name, popularity: artistPop[r.name] || null, concerts: getAllConcerts(r) }); });
     }
   } catch (e) {}
-  for (const name of artists) {
-    const tm = ticketByName.get(name);
-    if (!tm) { results.push({ name, popularity: artistPop[name] || null, concert: null }); continue; }
-    results.push({ name, popularity: artistPop[name] || null, concert: tm.concert });
-  }
   loading.style.display = 'none';
-  const withConcerts = results.filter(r => r.concert);
-  if (withConcerts.length === 0) { noConcerts.style.display = 'block'; }
+  const withConcerts = results.filter(r => r.concerts && r.concerts.length);
+  if (!withConcerts.length) { noConcerts.style.display = 'block'; }
   else {
-    withConcerts.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     renderConcerts(withConcerts);
-    document.getElementById('alerts-count').textContent = withConcerts.length + ' concert' + (withConcerts.length > 1 ? 's' : '');
+    const total = withConcerts.reduce((n, r) => n + r.concerts.length, 0);
+    document.getElementById('alerts-count').textContent = total + ' concert' + (total > 1 ? 's' : '');
+    document.getElementById('artist-summary').textContent = `${withConcerts.length} artistes • ${total} dates (France d'abord)`;
   }
   loadTopWorld();
 }
@@ -180,19 +171,22 @@ async function loadTopWorld() {
     renderTopWorld(list);
   } catch (e) {}
 }
-function cardHtml(name, concert, badge) {
+function concertCard(name, concert) {
   const date = formatDate(concert.date);
   const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
   const c = { name, venue: concert.venue, city: concert.city, country: concert.country, date: concert.date, url: concert.url };
-  return `<div class="artist-section-header"><h3>${name}</h3>${badge || ''}</div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${concert.venue}</div><div class="concert-location">${concert.city}${concert.country ? ', ' + concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${concert.source}</span></div></div><div class="concert-actions">${favButton(c)}${concert.url ? `<a class="btn-ticket" href="${concert.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}</div></div>`;
+  return `<div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${concert.venue}</div><div class="concert-location">${concert.city}${concert.country ? ', ' + concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${concert.source}</span>${concert.country === 'FR' ? '<span class="concert-tag">🇫🇷 France</span>' : ''}</div></div><div class="concert-actions">${favButton(c)}${concert.url ? `<a class="btn-ticket" href="${concert.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}</div></div>`;
 }
 function renderTopWorld(list) {
   const container = document.getElementById('concerts-container');
   list.forEach(r => {
-    if (!r.concert) return;
+    const concerts = getAllConcerts(r);
+    if (!concerts.length) return;
     const s = document.createElement('div');
     s.className = 'artist-section';
-    s.innerHTML = cardHtml(r.name, r.concert, '');
+    let html = `<div class="artist-section-header"><h3>${r.name}</h3><span class="track-badge">${concerts.length} date${concerts.length > 1 ? 's' : ''}</span></div>`;
+    concerts.forEach(cc => { html += concertCard(r.name, cc); });
+    s.innerHTML = html;
     container.appendChild(s);
   });
   syncFavButtons();
@@ -207,10 +201,13 @@ function renderConcerts(results) {
   const container = document.getElementById('concerts-container');
   container.innerHTML = '';
   results.forEach(r => {
-    if (!r.concert) return;
+    const concerts = r.concerts || [];
+    if (!concerts.length) return;
     const s = document.createElement('div');
     s.className = 'artist-section';
-    s.innerHTML = cardHtml(r.name, r.concert, r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : '');
+    let html = `<div class="artist-section-header"><h3>${r.name}</h3><span class="track-badge">${concerts.length} date${concerts.length > 1 ? 's' : ''} ${r.popularity ? '• Pop ' + r.popularity : ''}</span></div>`;
+    concerts.forEach(cc => { html += concertCard(r.name, cc); });
+    s.innerHTML = html;
     container.appendChild(s);
   });
   _allRendered = results;
@@ -223,14 +220,20 @@ function filterConcerts(value) {
   container.innerHTML = '';
   const filtered = _allRendered.filter(r => {
     if (!v) return true;
-    if (v === 'favoris' || v === '❤️') return isFav({ name: r.name, venue: r.concert.venue, date: r.concert.date });
-    return r.name.toLowerCase().includes(v) || (r.concert && r.concert.venue.toLowerCase().includes(v)) || (r.concert && r.concert.city.toLowerCase().includes(v));
+    if (v === 'favoris' || v === '❤️') return (r.concerts || []).some(cc => isFav({ name: r.name, venue: cc.venue, date: cc.date }));
+    return r.name.toLowerCase().includes(v);
   });
   filtered.forEach(r => {
-    if (!r.concert) return;
+    const concerts = (r.concerts || []).filter(cc => {
+      if (!v || v === 'favoris' || v === '❤️') return true;
+      return cc.venue.toLowerCase().includes(v) || cc.city.toLowerCase().includes(v);
+    });
+    if (!concerts.length) return;
     const s = document.createElement('div');
     s.className = 'artist-section';
-    s.innerHTML = cardHtml(r.name, r.concert, r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : '');
+    let html = `<div class="artist-section-header"><h3>${r.name}</h3><span class="track-badge">${concerts.length} date${concerts.length > 1 ? 's' : ''}</span></div>`;
+    concerts.forEach(cc => { html += concertCard(r.name, cc); });
+    s.innerHTML = html;
     container.appendChild(s);
   });
   syncFavButtons();
