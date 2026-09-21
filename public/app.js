@@ -2,6 +2,9 @@ let artists = [];
 let artistPop = {};
 
 const MOIS_FR = ["janv","févr","mars","avr","mai","juin","juil","août","sept","oct","nov","déc"];
+const FAV_KEY = 'leet_favs';
+window._concertStore = {};
+let _favId = 0;
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -9,6 +12,49 @@ function showScreen(id) {
 }
 function logout() { window.location.href = '/logout'; }
 function changeAccount() { fetch('/logout').then(() => { window.location.href = '/login'; }); }
+
+// === FAVORIS ===
+function getFavs() { try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch (e) { return []; } }
+function favKey(c) { return (c.name || '') + '|' + (c.venue || '') + '|' + (c.date || ''); }
+function isFav(c) { const k = favKey(c); return getFavs().some(f => favKey(f) === k); }
+function toggleFav(btn) {
+  const fid = btn.dataset.fid;
+  const c = window._concertStore[fid];
+  if (!c) return;
+  let favs = getFavs();
+  const k = favKey(c);
+  if (favs.some(f => favKey(f) === k)) {
+    favs = favs.filter(f => favKey(f) !== k);
+    btn.textContent = '🤍';
+    btn.classList.remove('active');
+    showToast('Retiré des favoris', 'info');
+  } else {
+    favs.push(c);
+    btn.textContent = '❤️';
+    btn.classList.add('active');
+    showToast('Ajouté aux favoris ❤️', 'success');
+  }
+  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  syncFavButtons();
+}
+function syncFavButtons() {
+  const favs = getFavs();
+  const keys = new Set(favs.map(favKey));
+  document.querySelectorAll('.btn-fav').forEach(b => {
+    const c = window._concertStore[b.dataset.fid];
+    if (!c) return;
+    const on = keys.has(favKey(c));
+    b.textContent = on ? '❤️' : '🤍';
+    b.classList.toggle('active', on);
+  });
+}
+function favButton(c) {
+  const fid = 'c' + (_favId++);
+  window._concertStore[fid] = c;
+  const on = isFav(c);
+  return `<button class="btn-fav${on ? ' active' : ''}" data-fid="${fid}" onclick="toggleFav(this)" title="Mettre en favori">${on ? '❤️' : '🤍'}</button>`;
+}
+
 function showToast(msg, type = 'info') {
   const t = document.createElement('div');
   t.className = 'toast';
@@ -105,17 +151,22 @@ async function loadTopWorld() {
     renderTopWorld(list);
   } catch (e) {}
 }
+function cardHtml(name, concert, badge) {
+  const date = formatDate(concert.date);
+  const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
+  const c = { name, venue: concert.venue, city: concert.city, country: concert.country, date: concert.date, url: concert.url };
+  return `<div class="artist-section-header"><h3>${name}</h3>${badge || ''}</div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${concert.venue}</div><div class="concert-location">${concert.city}${concert.country ? ', ' + concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${concert.source}</span></div></div><div class="concert-actions">${favButton(c)}${concert.url ? `<a class="btn-ticket" href="${concert.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}</div></div>`;
+}
 function renderTopWorld(list) {
   const container = document.getElementById('concerts-container');
   list.forEach(r => {
     if (!r.concert) return;
-    const date = formatDate(r.concert.date);
-    const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
     const s = document.createElement('div');
     s.className = 'artist-section';
-    s.innerHTML = `<div class="artist-section-header"><h3>${r.name}</h3></div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${r.concert.venue}</div><div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${r.concert.source}</span></div></div>${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}</div>`;
+    s.innerHTML = cardHtml(r.name, r.concert, '');
     container.appendChild(s);
   });
+  syncFavButtons();
 }
 function formatDate(iso) {
   if (!iso) return null;
@@ -128,14 +179,13 @@ function renderConcerts(results) {
   container.innerHTML = '';
   results.forEach(r => {
     if (!r.concert) return;
-    const date = formatDate(r.concert.date);
-    const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
-    const section = document.createElement('div');
-    section.className = 'artist-section';
-    section.innerHTML = `<div class="artist-section-header"><h3>${r.name}</h3>${r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : ''}</div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${r.concert.venue}</div><div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${r.concert.source}</span></div></div>${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}</div>`;
-    container.appendChild(section);
+    const s = document.createElement('div');
+    s.className = 'artist-section';
+    s.innerHTML = cardHtml(r.name, r.concert, r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : '');
+    container.appendChild(s);
   });
   _allRendered = results;
+  syncFavButtons();
 }
 let _allRendered = [];
 function filterConcerts(value) {
@@ -143,18 +193,18 @@ function filterConcerts(value) {
   const container = document.getElementById('concerts-container');
   container.innerHTML = '';
   const filtered = _allRendered.filter(r => {
-    if (!v) return true;
+    if (!v && v !== '❤️' && v !== 'favoris') return true;
+    if (v === '❤️' || v === 'favoris') return isFav({ name: r.name, venue: r.concert.venue, date: r.concert.date });
     return r.name.toLowerCase().includes(v) || (r.concert && r.concert.venue.toLowerCase().includes(v)) || (r.concert && r.concert.city.toLowerCase().includes(v));
   });
   filtered.forEach(r => {
     if (!r.concert) return;
-    const date = formatDate(r.concert.date);
-    const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
     const s = document.createElement('div');
     s.className = 'artist-section';
-    s.innerHTML = `<div class="artist-section-header"><h3>${r.name}</h3>${r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : ''}</div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${r.concert.venue}</div><div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${r.concert.source}</span></div></div>${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}</div>`;
+    s.innerHTML = cardHtml(r.name, r.concert, r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : '');
     container.appendChild(s);
   });
+  syncFavButtons();
 }
 (async function init() {
   try {
