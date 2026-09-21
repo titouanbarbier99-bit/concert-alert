@@ -172,13 +172,13 @@ async function findTicketmasterExact(name) {
   const attId = await findAttractionId(name);
   if (attId) {
     try {
-      const u = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=20&sort=date,asc&locale=fr-fr';
+      const u = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=50&sort=date,asc&locale=fr-fr';
       const data = await get(u);
       const ev = (data._embedded && data._embedded.events) || [];
       all = all.concat(ev.map(mapTmEvent));
     } catch (e) {}
     try {
-      const uW = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=20&sort=date,asc';
+      const uW = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=50&sort=date,asc';
       const dataW = await get(uW);
       const evW = (dataW._embedded && dataW._embedded.events) || [];
       all = all.concat(evW.map(mapTmEvent));
@@ -205,17 +205,17 @@ app.post('/api/multi-artist', async (req, res) => {
   const out = [];
   for (const name of artists) {
     const matched = await findTicketmasterExact(name);
-    if (!matched.length) { out.push({ name, popularity: null, concert: null }); continue; }
-    const c = matched[0];
-    out.push({ name, popularity: null, concert: { venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url } });
+    if (!matched.length) { out.push({ name, popularity: null, concert: null, concerts: [] }); continue; }
+    const concerts = matched.slice(0, 20).map(c => ({ venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }));
+    out.push({ name, popularity: null, concert: concerts[0], concerts });
   }
   const found = out.filter(o => o.concert).length;
   if (found === 0) {
     for (const star of FAMOUS_FALLBACK) {
       const m = await findTicketmasterExact(star);
       if (m.length) {
-        const c = m[0];
-        out.push({ name: star + ' ⭐', popularity: null, concert: { venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }, fallback: true });
+        const concerts = m.slice(0, 5).map(c => ({ venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }));
+        out.push({ name: star + ' ⭐', popularity: null, concert: concerts[0], concerts, fallback: true });
       }
       if (out.filter(o => o.concert).length >= 6) break;
     }
@@ -230,9 +230,9 @@ app.get('/api/top-world', async (req, res) => {
     try {
       const m = await findTicketmasterExact(star);
       if (m.length) {
-        const c = m[0];
+        const concerts = m.slice(0, 5).map(c => ({ venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }));
         if (out.some(o => o.name === star)) continue;
-        out.push({ name: star, popularity: null, concert: { venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url } });
+        out.push({ name: star, popularity: null, concert: concerts[0], concerts });
       }
     } catch (e) {}
     if (out.length >= 12) break;
