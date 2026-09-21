@@ -5,6 +5,36 @@ const MOIS_FR = ["janv","févr","mars","avr","mai","juin","juil","août","sept",
 const FAV_KEY = 'leet_favs';
 window._concertStore = {};
 let _favId = 0;
+let selectedRegion = 'ALL';
+const CITY_TO_REGION = {
+  'paris':'IDF','saint-denis':'IDF','nanterre':'IDF','creteil':'IDF','cergy':'IDF','evry':'IDF',
+  'lyon':'ARA','grenoble':'ARA','saint-etienne':'ARA','clermont-ferrand':'ARA','annecy':'ARA','villeurbanne':'ARA',
+  'marseille':'PAC','nice':'PAC','toulon':'PAC','aix-en-provence':'PAC','avignon':'PAC',
+  'toulouse':'OCC','montpellier':'OCC','nimes':'OCC','perpignan':'OCC',
+  'bordeaux':'NAQ','la rochelle':'NAQ','poitiers':'NAQ','limoges':'NAQ','pau':'NAQ',
+  'lille':'HDF','amiens':'HDF','dunkerque':'HDF','valenciennes':'HDF',
+  'strasbourg':'GES','metz':'GES','nancy':'GES','reims':'GES','amneville':'GES','amneville les thermes':'GES',
+  'nantes':'PDL','angers':'PDL','rennes':'BRE','brest':'BRE',
+  'rouen':'NOR','caen':'NOR','le havre':'NOR','dijon':'BFC','besancon':'BFC',
+  'orleans':'CVL','tours':'CVL','ajaccio':'COR','bastia':'COR'
+};
+function cityToRegion(city) {
+  const c = (city || '').toLowerCase().trim();
+  if (CITY_TO_REGION[c]) return CITY_TO_REGION[c];
+  for (const k in CITY_TO_REGION) { if (c.includes(k) || k.includes(c)) return CITY_TO_REGION[k]; }
+  return null;
+}
+function selectRegion(r) {
+  selectedRegion = r;
+  document.querySelectorAll('.region-chip').forEach(b => b.classList.toggle('active', b.dataset.region === r));
+  applyFilters();
+}
+function applyFilters() {
+  const country = (document.getElementById('country-filter') || {}).value || 'ALL';
+  const fr = document.getElementById('fr-regions');
+  if (fr) fr.style.display = country === 'FR' ? 'flex' : 'none';
+  filterConcerts(document.getElementById('search-artist').value || '');
+}
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -149,7 +179,8 @@ async function searchConcerts() {
   const withConcerts = results.filter(r => r.concerts && r.concerts.length);
   if (!withConcerts.length) { noConcerts.style.display = 'block'; }
   else {
-    renderConcerts(withConcerts);
+    _allRendered = withConcerts;
+    applyFilters();
     const total = withConcerts.reduce((n, r) => n + r.concerts.length, 0);
     document.getElementById('alerts-count').textContent = total + ' concert' + (total > 1 ? 's' : '');
     document.getElementById('artist-summary').textContent = `${withConcerts.length} artistes • ${total} dates (France d'abord)`;
@@ -157,19 +188,33 @@ async function searchConcerts() {
   loadTopWorld();
 }
 async function loadTopWorld() {
-  const container = document.getElementById('concerts-container');
   try {
     const res = await fetch('/api/top-world');
     if (!res.ok) return;
     const list = await res.json();
-    if (!list || !list.length) return;
-    const title = document.createElement('div');
-    title.className = 'artist-section-header';
-    title.style.marginTop = '30px';
-    title.innerHTML = '<h3>Top monde 🌍</h3><span class="track-badge">Suggestions</span>';
-    container.appendChild(title);
-    renderTopWorld(list);
+    _topWorldList = list || [];
+    renderTopWorldFiltered();
   } catch (e) {}
+}
+let _topWorldList = [];
+function renderTopWorldFiltered() {
+  const country = (document.getElementById('country-filter') || {}).value || 'ALL';
+  const container = document.getElementById('concerts-container');
+  const filtered = (_topWorldList || []).map(r => {
+    const concerts = getAllConcerts(r).filter(cc => {
+      if (country === 'FR' && cc.country !== 'FR') return false;
+      if (country === 'FR' && selectedRegion !== 'ALL' && cityToRegion(cc.city) !== selectedRegion) return false;
+      return true;
+    });
+    return { name: r.name, concerts };
+  }).filter(r => r.concerts.length);
+  if (!filtered.length) return;
+  const title = document.createElement('div');
+  title.className = 'artist-section-header';
+  title.style.marginTop = '30px';
+  title.innerHTML = '<h3>Top monde 🌍</h3><span class="track-badge">Suggestions</span>';
+  container.appendChild(title);
+  renderTopWorld(filtered);
 }
 function concertCard(name, concert) {
   const date = formatDate(concert.date);
@@ -180,7 +225,7 @@ function concertCard(name, concert) {
 function renderTopWorld(list) {
   const container = document.getElementById('concerts-container');
   list.forEach(r => {
-    const concerts = getAllConcerts(r);
+    const concerts = r.concerts || getAllConcerts(r);
     if (!concerts.length) return;
     const s = document.createElement('div');
     s.className = 'artist-section';
@@ -205,7 +250,7 @@ function renderConcerts(results) {
     if (!concerts.length) return;
     const s = document.createElement('div');
     s.className = 'artist-section';
-    let html = `<div class="artist-section-header"><h3>${r.name}</h3><span class="track-badge">${concerts.length} date${concerts.length > 1 ? 's' : ''} ${r.popularity ? '• Pop ' + r.popularity : ''}</span></div>`;
+    let html = `<div class="artist-section-header"><h3>${r.name}</h3><span class="track-badge">${concerts.length} date${concerts.length > 1 ? 's' : ''}</span></div>`;
     concerts.forEach(cc => { html += concertCard(r.name, cc); });
     s.innerHTML = html;
     container.appendChild(s);
@@ -214,18 +259,29 @@ function renderConcerts(results) {
   syncFavButtons();
 }
 let _allRendered = [];
+function matchCountry(cc) {
+  const country = (document.getElementById('country-filter') || {}).value || 'ALL';
+  if (country === 'FR' && cc.country !== 'FR') return false;
+  if (country === 'FR' && selectedRegion !== 'ALL' && cityToRegion(cc.city) !== selectedRegion) return false;
+  return true;
+}
 function filterConcerts(value) {
-  const v = value.trim().toLowerCase();
+  const v = (value || '').trim().toLowerCase();
   const container = document.getElementById('concerts-container');
   container.innerHTML = '';
   const filtered = _allRendered.filter(r => {
-    if (!v) return true;
-    if (v === 'favoris' || v === '❤️') return (r.concerts || []).some(cc => isFav({ name: r.name, venue: cc.venue, date: cc.date }));
-    return r.name.toLowerCase().includes(v);
+    if (v === 'favoris' || v === '❤️') return (r.concerts || []).some(cc => matchCountry(cc) && isFav({ name: r.name, venue: cc.venue, date: cc.date }));
+    if (v && !r.name.toLowerCase().includes(v)) {
+      const anyVenue = (r.concerts || []).some(cc => cc.venue.toLowerCase().includes(v) || cc.city.toLowerCase().includes(v));
+      if (!anyVenue) return false;
+    }
+    return (r.concerts || []).some(matchCountry);
   });
   filtered.forEach(r => {
     const concerts = (r.concerts || []).filter(cc => {
+      if (!matchCountry(cc)) return false;
       if (!v || v === 'favoris' || v === '❤️') return true;
+      if (r.name.toLowerCase().includes(v)) return true;
       return cc.venue.toLowerCase().includes(v) || cc.city.toLowerCase().includes(v);
     });
     if (!concerts.length) return;
@@ -237,6 +293,7 @@ function filterConcerts(value) {
     container.appendChild(s);
   });
   syncFavButtons();
+  renderTopWorldFiltered();
 }
 (async function init() {
   updateFavsCount();
