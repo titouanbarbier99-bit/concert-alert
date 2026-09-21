@@ -12,6 +12,8 @@ const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const TICKETMASTER_KEY = process.env.TICKETMASTER_API_KEY || 'lmSBuxsZpv2SuSIxH6mHowsuNuteTr7s';
 
+const FAMOUS_FALLBACK = ["Taylor Swift","Coldplay","Ed Sheeran","Beyonce","Drake","Rihanna","Bruno Mars","Adele","The Weeknd","Dua Lipa"];
+
 const userSessions = new Map();
 const currentState = new Map();
 
@@ -40,10 +42,10 @@ function postForm(url, params) {
   });
 }
 
-function get(url, accessToken, extraHeaders) {
+function get(url, accessToken) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
-    const options = { method: 'GET', headers: extraHeaders || {} };
+    const options = { method: 'GET', headers: {} };
     if (accessToken) options.headers.Authorization = 'Bearer ' + accessToken;
     const lib = u.protocol === 'https:' ? https : http;
     const req = lib.request(u, options, res => {
@@ -63,7 +65,27 @@ function get(url, accessToken, extraHeaders) {
 }
 
 function normalizeArtist(name) {
-  return name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  return (name || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function tokens(s) { return normalizeArtist(s).split(' ').filter(Boolean); }
+
+// MATCH EXACT : tous les mots de l'artiste doivent apparaître en mots entiers
+function artistMatches(name, event) {
+  const target = tokens(name);
+  if (!target.length) return false;
+  const att = tokens(event.artist || '');
+  const evn = tokens(event.eventName || '');
+  const hasAll = (list) => target.every(t => list.includes(t));
+  if (hasAll(att)) return true;
+  if (hasAll(evn)) return true;
+  return false;
+}
+
+function isUpcoming(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  return !isNaN(d) && d.getTime() >= Date.now() - 86400000;
 }
 
 app.use((req, res, next) => {
@@ -162,42 +184,69 @@ app.get('/api/my-artists', async (req, res) => {
   }
 });
 
-function artistMatches(name, event) {
-  const target = normalizeArtist(name);
-  const attraction = normalizeArtist(event.artist || '');
-  const eventName = normalizeArtist(event.name || '');
-  if (attraction && attraction === target) return true;
-  if (eventName && eventName.includes(target)) return true;
-  if (attraction && attraction.includes(target)) return true;
-  return false;
+function mapTmEvent(e) {
+  return {
+    artist: (e._embedded && e._embedded.attractions && e._embedded.attractions[0] && e._embedded.attractions[0].name) || e.name,
+    eventName: e.name || '',
+    venue: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].name) || 'Lieu inconnu',
+    city: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].city && e._embedded.venues[0].city.name) || '',
+    country: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].country && e._embedded.venues[0].country.countryCode) || '',
+    date: e.dates && e.dates.start && (e.dates.start.dateTime || e.dates.start.localDate) ? (e.dates.start.dateTime || e.dates.start.localDate) : null,
+    url: e.url || '',
+    source: 'Ticketmaster'
+  };
 }
 
-function isUpcoming(dateStr) {
-  const d = new Date(dateStr);
-  return !isNaN(d) && d.getTime() >= Date.now() - 86400000;
-}
-
-async function findTicketmasterEvents(name) {
-  const params = new URLSearchParams({
-    apikey: TICKETMASTER_KEY,
-    keyword: name,
-    size: '20',
-    classificationName: 'concert,music'
-  });
+async function findAttractionId(name) {
   try {
-    const data = await get('https://app.ticketmaster.com/discovery/v2/events.json?' + params.toString());
-    const events = (data._embedded && data._embedded.events) || [];
-    return events.map(e => ({
-      artist: (e._embedded && e._embedded.attractions && e._embedded.attractions[0] && e._embedded.attractions[0].name) || e.name,
-      eventName: e.name || '',
-      venue: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].name) || 'Lieu inconnu',
-      city: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].city && e._embedded.venues[0].city.name) || '',
-      country: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].country && e._embedded.venues[0].country.countryCode) || '',
-      date: e.dates && e.dates.start && e.dates.start.localDate ? e.dates.start.localDate : null,
-      url: e.url || '',
-      source: 'Ticketmaster'
-    }));
-  } catch (e) { return []; }
+    const u = 'https://app.ticketmaster.com/discovery/v2/attractions.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=5';
+    const data = await get(u);
+    const list = (data._embedded && data._embedded.attractions) || [];
+    const target = normalizeArtist(name);
+    for (const a of list) {
+      if (normalizeArtist(a.name) === target) return a.id;
+    }
+    return list.length ? list[0].id : null;
+  } catch (e) { return null; }
+}
+
+async function findTicketmasterExact(name) {
+  let all = [];
+  // 1) par vrai ID artiste (le plus exact, monde entier)
+  const attId = await findAttractionId(name);
+  if (attId) {
+    try {
+      const u = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=20&sort=date,asc';
+      const data = await get(u);
+      const ev = (data._embedded && data._embedded.events) || [];
+      all = all.concat(ev.map(mapTmEvent));
+    } catch (e) {}
+  }
+  // 2) par mot-clé (monde entier, sans filtre pays)
+  try {
+    const u2 = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=20&sort=date,asc&classificationName=music';
+    const data2 = await get(u2);
+    const ev2 = (data2._embedded && data2._embedded.events) || [];
+    all = all.concat(ev2.map(mapTmEvent));
+  } catch (e) {}
+
+  // déduplique par URL + date
+  const seen = new Set();
+  const uniq = [];
+  for (const c of all) {
+    const k = (c.url || '') + '|' + (c.date || '');
+    if (!seen.has(k)) { seen.add(k); uniq.push(c); }
+  }
+
+  // match EXACT + à venir, France d'abord puis monde
+  const matched = uniq.filter(c => artistMatches(name, c)).filter(c => isUpcoming(c.date));
+  matched.sort((a, b) => {
+    const aFR = a.country === 'FR' ? 0 : 1;
+    const bFR = b.country === 'FR' ? 0 : 1;
+    if (aFR !== bFR) return aFR - bFR;
+    return new Date(a.date) - new Date(b.date);
+  });
+  return matched;
 }
 
 app.post('/api/multi-artist', async (req, res) => {
@@ -205,24 +254,22 @@ app.post('/api/multi-artist', async (req, res) => {
   if (!artists || !Array.isArray(artists)) return res.status(400).json({ error: 'Invalid body' });
   const out = [];
   for (const name of artists) {
-    let events = await findTicketmasterEvents(name);
-    const matched = events.filter(e => artistMatches(name, e)).filter(e => isUpcoming(e.date));
-    matched.sort((a, b) => new Date(a.date) - new Date(b.date));
-    if (matched.length === 0) { out.push({ name, popularity: null, concert: null }); continue; }
+    const matched = await findTicketmasterExact(name);
+    if (!matched.length) { out.push({ name, popularity: null, concert: null }); continue; }
     const c = matched[0];
-    out.push({
-      name,
-      popularity: null,
-      concert: {
-        venue: c.venue,
-        city: c.city,
-        country: c.country,
-        date: c.date,
-        capacity: null,
-        source: c.source,
-        url: c.url
+    out.push({ name, popularity: null, concert: { venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url } });
+  }
+  // FALLBACK : si aucun concert pour tes artistes → stars très connues
+  const found = out.filter(o => o.concert).length;
+  if (found === 0) {
+    for (const star of FAMOUS_FALLBACK) {
+      const m = await findTicketmasterExact(star);
+      if (m.length) {
+        const c = m[0];
+        out.push({ name: star + ' ⭐', popularity: null, concert: { venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }, fallback: true });
       }
-    });
+      if (out.filter(o => o.concert).length >= 6) break;
+    }
   }
   res.json(out);
 });
