@@ -13,33 +13,33 @@ function showScreen(id) {
 function logout() { window.location.href = '/logout'; }
 function changeAccount() { fetch('/logout').then(() => { window.location.href = '/login'; }); }
 
-// === FAVORIS ===
+// === TIROIR FAVORIS ===
+function toggleFavs(open) {
+  document.getElementById('favs-drawer').classList.toggle('open', open);
+  document.getElementById('favs-overlay').classList.toggle('open', open);
+  if (open) renderFavsList();
+}
 function getFavs() { try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch (e) { return []; } }
 function favKey(c) { return (c.name || '') + '|' + (c.venue || '') + '|' + (c.date || ''); }
 function isFav(c) { const k = favKey(c); return getFavs().some(f => favKey(f) === k); }
 function toggleFav(btn) {
-  const fid = btn.dataset.fid;
-  const c = window._concertStore[fid];
+  const c = window._concertStore[btn.dataset.fid];
   if (!c) return;
   let favs = getFavs();
   const k = favKey(c);
   if (favs.some(f => favKey(f) === k)) {
     favs = favs.filter(f => favKey(f) !== k);
-    btn.textContent = '🤍';
-    btn.classList.remove('active');
     showToast('Retiré des favoris', 'info');
   } else {
     favs.push(c);
-    btn.textContent = '❤️';
-    btn.classList.add('active');
     showToast('Ajouté aux favoris ❤️', 'success');
   }
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
   syncFavButtons();
+  updateFavsCount();
 }
 function syncFavButtons() {
-  const favs = getFavs();
-  const keys = new Set(favs.map(favKey));
+  const keys = new Set(getFavs().map(favKey));
   document.querySelectorAll('.btn-fav').forEach(b => {
     const c = window._concertStore[b.dataset.fid];
     if (!c) return;
@@ -47,6 +47,35 @@ function syncFavButtons() {
     b.textContent = on ? '❤️' : '🤍';
     b.classList.toggle('active', on);
   });
+}
+function updateFavsCount() {
+  const el = document.getElementById('favs-count');
+  if (el) el.textContent = getFavs().length;
+  renderFavsList();
+}
+function renderFavsList() {
+  const list = document.getElementById('favs-list');
+  if (!list) return;
+  const favs = getFavs();
+  const el = document.getElementById('favs-count');
+  if (el) el.textContent = favs.length;
+  if (!favs.length) { list.innerHTML = '<p class="hint">Aucun favori pour l’instant. Clique sur 🤍 sur un concert.</p>'; return; }
+  list.innerHTML = '';
+  favs.forEach(f => {
+    const d = document.createElement('div');
+    d.className = 'fav-item';
+    const date = formatDate(f.date);
+    const ds = date ? `${date.day} ${date.month} ${date.year}` : 'date ?';
+    d.innerHTML = `<b>${f.name}</b><span>${f.venue} — ${f.city}${f.country ? ', ' + f.country : ''} • ${ds}</span><div class="row">${f.url ? `<a href="${f.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}<button onclick="removeFav('${encodeURIComponent(favKey(f))}')">Retirer ✕</button></div>`;
+    list.appendChild(d);
+  });
+}
+function removeFav(kEnc) {
+  const k = decodeURIComponent(kEnc);
+  let favs = getFavs().filter(f => favKey(f) !== k);
+  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  syncFavButtons();
+  renderFavsList();
 }
 function favButton(c) {
   const fid = 'c' + (_favId++);
@@ -193,8 +222,8 @@ function filterConcerts(value) {
   const container = document.getElementById('concerts-container');
   container.innerHTML = '';
   const filtered = _allRendered.filter(r => {
-    if (!v && v !== '❤️' && v !== 'favoris') return true;
-    if (v === '❤️' || v === 'favoris') return isFav({ name: r.name, venue: r.concert.venue, date: r.concert.date });
+    if (!v) return true;
+    if (v === 'favoris' || v === '❤️') return isFav({ name: r.name, venue: r.concert.venue, date: r.concert.date });
     return r.name.toLowerCase().includes(v) || (r.concert && r.concert.venue.toLowerCase().includes(v)) || (r.concert && r.concert.city.toLowerCase().includes(v));
   });
   filtered.forEach(r => {
@@ -207,6 +236,7 @@ function filterConcerts(value) {
   syncFavButtons();
 }
 (async function init() {
+  updateFavsCount();
   try {
     const me = await fetch('/api/me');
     const m = await me.json();
