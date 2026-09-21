@@ -1,29 +1,17 @@
-```css
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --text: #ffffff;
-  --text-dim: #f0dfe2;
-  --text-variant: #c9aeb3;
-
-  /* ROUGE FLASHY */
-  --accent: #ff1717;
-  --accent-glow: rgba(255, 23, 23, 0.65);
-
+  --text: #fff;
+  --text-dim: #ffe0de;
+  --text-variant: #ffb3ad;
+  --accent: #ff1e1e;
+  --accent-glow: rgba(255,30,30,0.65);
   --spotify: #1DB954;
-  --spotify-dark: #14833c;
-
-  --border: rgba(255,255,255,0.14);
-  --surface: rgba(255,255,255,0.07);
-  --surface-high: rgba(255,255,255,0.11);
-
+  --border: rgba(255,255,255,0.22);
+  --surface: rgba(0,0,0,0.32);
+  --surface-high: rgba(0,0,0,0.45);
   --radius: 1rem;
   --radius-sm: 0.75rem;
-
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -32,1288 +20,182 @@ body {
   color: var(--text);
   min-height: 100vh;
   overflow-x: hidden;
-
-  /* Fond rouge principal */
-  background: #180205;
+  background: #140303;
 }
 
-/* ═══════════════════════════════════════
-   FOND ROUGE FLASHY
-   ═══════════════════════════════════════ */
-
+/* ROUGE PÉTANT qui se dégrade petit à petit vers le bas */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
-
   background:
-    radial-gradient(
-      650px 550px at 50% 45%,
-      rgba(255, 25, 25, 0.90),
-      transparent 68%
-    ),
-
-    radial-gradient(
-      850px 650px at 90% 5%,
-      rgba(255, 0, 35, 0.80),
-      transparent 65%
-    ),
-
-    radial-gradient(
-      800px 650px at 5% 95%,
-      rgba(225, 0, 25, 0.72),
-      transparent 65%
-    ),
-
-    radial-gradient(
-      600px 500px at 50% 0%,
-      rgba(255, 50, 40, 0.45),
-      transparent 70%
-    ),
-
-    linear-gradient(
-      135deg,
-      #ff1717 0%,
-      #f00018 25%,
-      #c60018 45%,
-      #79000e 68%,
-      #350008 82%,
-      #180205 100%
-    );
+    radial-gradient(1100px 600px at 50% 0%, rgba(255,80,70,0.95), transparent 65%),
+    radial-gradient(900px 500px at 50% 22%, rgba(255,30,30,0.9), transparent 65%),
+    linear-gradient(180deg, #ff2b2b 0%, #f31212 18%, #c00d0d 38%, #7a0808 62%, #2a0505 85%, #140303 100%);
 }
 
-/* Halo supplémentaire */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  pointer-events: none;
+.screen { position: relative; z-index: 1; display: none; min-height: 100vh; }
+.screen.active { display: flex; flex-direction: column; }
+.accent { color: #fff; text-shadow: 0 0 22px rgba(255,255,255,0.8); }
 
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      rgba(255, 30, 30, 0.22),
-      transparent 55%
-    );
-}
-
-
-/* ═══════════════════════════════════════
-   SCREENS
-   ═══════════════════════════════════════ */
-
-.screen {
-  position: relative;
-  z-index: 1;
-  display: none;
-  min-height: 100vh;
-}
-
-.screen.active {
-  display: flex;
-  flex-direction: column;
-}
-
-.accent {
-  color: var(--accent);
-}
-
-
-/* ═══════════════════════════════════════
-   PAGE D'ACCUEIL
-   ═══════════════════════════════════════ */
-
+/* ═══════ ACCUEIL ═══════ */
 .hero {
   min-height: 100vh;
-
   display: flex;
   align-items: center;
   justify-content: center;
-
   padding: 40px 24px;
-
   position: relative;
-  overflow: hidden;
 }
-
-
-/* Halo derrière le logo */
-
 .hero-glow {
   position: absolute;
-
-  width: 600px;
-  height: 600px;
-
-  background:
-    radial-gradient(
-      circle,
-      rgba(255, 20, 20, 0.75) 0%,
-      rgba(255, 0, 0, 0.35) 35%,
-      transparent 70%
-    );
-
-  filter: blur(25px);
-
+  width: 560px; height: 560px;
+  background: radial-gradient(circle, rgba(255,255,255,0.35), transparent 70%);
+  filter: blur(30px);
   border-radius: 50%;
-
-  top: 50%;
+  top: 42%;
   left: 50%;
-
   transform: translate(-50%, -50%);
-
-  opacity: 0.85;
-
   pointer-events: none;
-
-  animation: glowPulse 4s ease-in-out infinite;
 }
-
-@keyframes glowPulse {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.75;
-  }
-
-  50% {
-    transform: translate(-50%, -50%) scale(1.12);
-    opacity: 1;
-  }
-}
-
-
-/* Contenu */
-
 .hero-content {
   position: relative;
-
   text-align: center;
-
-  max-width: 520px;
-
+  max-width: 560px;
   display: flex;
   flex-direction: column;
   align-items: center;
-
-  z-index: 2;
 }
-
-
-/* ═══════════════════════════════════════
-   LOGO
-   ═══════════════════════════════════════ */
-
 .logo {
-  width: 92px;
-  height: 92px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 44px;
-
-  background:
-    linear-gradient(
-      135deg,
-      #ff3333,
-      #ff0000
-    );
-
+  width: 92px; height: 92px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 46px;
+  background: rgba(0,0,0,0.4);
+  border: 2px solid rgba(255,255,255,0.7);
   border-radius: 50%;
-
-  border: 1px solid rgba(255,255,255,0.18);
-
-  box-shadow:
-    0 0 25px rgba(255, 0, 0, 0.9),
-    0 0 60px rgba(255, 0, 0, 0.7),
-    0 15px 70px rgba(255, 0, 0, 0.55);
-
-  margin-bottom: 28px;
-
+  box-shadow: 0 0 60px rgba(255,255,255,0.45);
+  margin-bottom: 26px;
   animation: float 3.5s ease-in-out infinite;
-
-  position: relative;
 }
-
-
-/* Halo autour du logo */
-
-.logo::before {
-  content: '';
-
-  position: absolute;
-
-  inset: -18px;
-
-  border-radius: 50%;
-
-  background:
-    radial-gradient(
-      circle,
-      rgba(255, 30, 30, 0.45),
-      transparent 70%
-    );
-
-  filter: blur(10px);
-
-  z-index: -1;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-10px);
-  }
-}
-
-
-/* ═══════════════════════════════════════
-   TITRE
-   ═══════════════════════════════════════ */
-
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 .hero-title {
-  font-size: 56px;
-
-  font-weight: 800;
-
+  font-size: 62px;
+  font-weight: 900;
   letter-spacing: -2px;
-
-  margin-bottom: 16px;
-
-  text-shadow:
-    0 4px 30px rgba(0,0,0,0.25);
+  margin-bottom: 14px;
+  color: #fff;
+  text-shadow: 0 4px 30px rgba(0,0,0,0.5);
 }
-
-
-/* ═══════════════════════════════════════
-   SOUS-TITRE
-   ═══════════════════════════════════════ */
-
 .hero-sub {
-  font-size: 18px;
-
-  color: var(--text-dim);
-
-  margin-bottom: 40px;
-
+  font-size: 19px;
+  color: #fff;
+  opacity: 0.95;
+  margin-bottom: 42px;
   line-height: 1.5;
-
-  text-shadow:
-    0 2px 15px rgba(0,0,0,0.25);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.5);
 }
-
-
-/* ═══════════════════════════════════════
-   BOUTON SPOTIFY
-   ═══════════════════════════════════════ */
-
 .btn-spotify {
   display: inline-flex;
-
   align-items: center;
-
-  justify-content: center;
-
-  gap: 12px;
-
-  padding: 20px 44px;
-
-  background: var(--spotify);
-
-  color: #00280f;
-
-  font-size: 17px;
-
-  font-weight: 700;
-
-  border-radius: 999px;
-
-  text-decoration: none;
-
-  transition:
-    transform 0.2s,
-    box-shadow 0.2s;
-
-  box-shadow:
-    0 10px 40px rgba(29,185,84,0.45);
-}
-
-.btn-spotify:hover {
-  transform:
-    translateY(-3px)
-    scale(1.03);
-
-  box-shadow:
-    0 16px 60px rgba(29,185,84,0.60);
-}
-
-.spotify-logo {
-  width: 26px;
-  height: 26px;
-}
-
-.hero-note {
-  margin-top: 28px;
-
-  font-size: 14px;
-
-  color: var(--text-variant);
-}
-
-
-/* ═══════════════════════════════════════
-   TOPBAR
-   ═══════════════════════════════════════ */
-
-.topbar {
-  position: sticky;
-
-  top: 0;
-
-  z-index: 100;
-
-  display: flex;
-
-  align-items: center;
-
-  justify-content: space-between;
-
-  padding: 16px 28px;
-
-  background:
-    rgba(45, 0, 8, 0.78);
-
-  backdrop-filter: blur(16px);
-
-  border-bottom:
-    1px solid var(--border);
-}
-
-.topbar-left {
-  display: flex;
-
-  align-items: center;
-
-  gap: 12px;
-}
-
-.logo-small {
-  width: 40px;
-  height: 40px;
-
-  display: flex;
-
-  align-items: center;
-  justify-content: center;
-
-  font-size: 20px;
-
-  background: var(--accent);
-
-  border-radius: 50%;
-
-  box-shadow:
-    0 0 25px var(--accent-glow);
-}
-
-.logo-text {
-  font-size: 18px;
-
-  font-weight: 700;
-
-  letter-spacing: -0.5px;
-}
-
-.topbar-right {
-  display: flex;
-
-  align-items: center;
-
-  gap: 12px;
-}
-
-.alerts-badge {
-  background:
-    rgba(255,23,23,0.16);
-
-  color: var(--accent);
-
-  padding: 6px 14px;
-
-  border-radius: 999px;
-
-  font-size: 13px;
-
-  font-weight: 600;
-}
-
-.btn-sm {
-  padding: 7px 16px;
-
-  border-radius: 999px;
-
-  font-size: 13px;
-
-  font-weight: 600;
-
-  cursor: pointer;
-
-  border: none;
-
-  transition: all 0.2s;
-
-  font-family: inherit;
-}
-
-.btn-outline {
-  background: var(--surface);
-
-  border:
-    1px solid var(--border);
-
-  color: var(--text-dim);
-}
-
-.btn-outline:hover {
-  border-color: var(--accent);
-
-  color: var(--accent);
-
-  box-shadow:
-    0 0 15px rgba(255,0,0,0.25);
-}
-
-
-/* ═══════════════════════════════════════
-   CONTENT
-   ═══════════════════════════════════════ */
-
-.content {
-  max-width: 1000px;
-
-  margin: 0 auto;
-
-  padding: 36px 28px 80px;
-
-  width: 100%;
-}
-
-.content h2 {
-  font-size: 30px;
-
-  font-weight: 800;
-
-  letter-spacing: -1px;
-}
-
-.hint {
-  color: var(--text-dim);
-
-  font-size: 14px;
-
-  margin-top: 6px;
-}
-
-
-/* ═══════════════════════════════════════
-   ARTIST INPUT
-   ═══════════════════════════════════════ */
-
-.artist-input-area {
-  margin-top: 20px;
-}
-
-.input-row {
-  display: flex;
-
-  gap: 10px;
-
-  margin-bottom: 14px;
-}
-
-.input-row input {
-  flex: 1;
-
-  padding: 14px 18px;
-
-  background: var(--surface);
-
-  border:
-    1px solid var(--border);
-
-  border-radius: var(--radius-sm);
-
-  color: var(--text);
-
-  font-size: 15px;
-
-  font-family: inherit;
-
-  outline: none;
-
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
-}
-
-.input-row input:focus {
-  border-color: var(--accent);
-
-  box-shadow:
-    0 0 20px rgba(255,0,0,0.15);
-}
-
-.input-row input::placeholder {
-  color: var(--text-variant);
-}
-
-.btn-add {
-  padding: 14px 22px;
-
-  background: var(--accent);
-
-  color: white;
-
-  border: none;
-
-  border-radius: var(--radius-sm);
-
-  font-weight: 700;
-
-  font-size: 15px;
-
-  cursor: pointer;
-
-  transition: all 0.2s;
-
-  box-shadow:
-    0 5px 20px rgba(255,0,0,0.25);
-}
-
-.btn-add:hover {
-  filter: brightness(1.1);
-
-  transform: translateY(-1px);
-
-  box-shadow:
-    0 8px 30px rgba(255,0,0,0.4);
-}
-
-.artist-tags {
-  display: flex;
-
-  flex-wrap: wrap;
-
-  gap: 8px;
-
-  min-height: 20px;
-
-  margin-bottom: 16px;
-}
-
-.artist-tag {
-  display: inline-flex;
-
-  align-items: center;
-
-  gap: 8px;
-
-  padding: 8px 14px;
-
-  background:
-    rgba(255,23,23,0.16);
-
-  border:
-    1px solid rgba(255,23,23,0.4);
-
-  color: var(--text);
-
-  border-radius: 999px;
-
-  font-size: 13px;
-
-  font-weight: 500;
-}
-
-.artist-tag button {
-  background: transparent;
-
-  border: none;
-
-  color: var(--text-dim);
-
-  cursor: pointer;
-
-  font-size: 13px;
-
-  line-height: 1;
-}
-
-.artist-tag button:hover {
-  color: var(--accent);
-}
-
-
-/* ═══════════════════════════════════════
-   ARTIST SUGGESTIONS
-   ═══════════════════════════════════════ */
-
-.artist-suggestions {
-  margin-top: 6px;
-}
-
-.suggestion-chips {
-  display: flex;
-
-  flex-wrap: wrap;
-
-  gap: 8px;
-
-  margin-top: 10px;
-}
-
-.chip {
-  padding: 9px 18px;
-
-  background: var(--surface);
-
-  border:
-    1px solid var(--border);
-
-  border-radius: 999px;
-
-  color: var(--text-dim);
-
-  font-size: 13px;
-
-  font-family: inherit;
-
-  cursor: pointer;
-
-  transition: all 0.2s;
-}
-
-.chip:hover {
-  border-color: var(--accent);
-
-  color: var(--text);
-
-  background:
-    rgba(255,23,23,0.12);
-
-  box-shadow:
-    0 0 15px rgba(255,0,0,0.15);
-}
-
-
-/* ═══════════════════════════════════════
-   SEARCH BUTTON
-   ═══════════════════════════════════════ */
-
-.search-bar-container {
-  display: flex;
-
-  align-items: center;
-
-  gap: 16px;
-
-  margin-top: 24px;
-}
-
-.btn-analyze {
-  padding: 15px 34px;
-
-  background: var(--accent);
-
-  color: white;
-
-  border: none;
-
-  border-radius: 999px;
-
-  font-weight: 700;
-
-  font-size: 15px;
-
-  cursor: pointer;
-
-  transition: all 0.2s;
-
-  box-shadow:
-    0 6px 25px rgba(255,0,0,0.25);
-}
-
-.btn-analyze:hover {
-  filter: brightness(1.1);
-
-  box-shadow:
-    0 8px 35px rgba(255,0,0,0.45);
-
-  transform:
-    translateY(-1px);
-}
-
-.btn-analyze:disabled {
-  opacity: 0.4;
-
-  cursor: not-allowed;
-
-  box-shadow: none;
-}
-
-
-/* ═══════════════════════════════════════
-   CONCERT HEADER
-   ═══════════════════════════════════════ */
-
-.section-header {
-  display: flex;
-
-  align-items: flex-start;
-
-  justify-content: space-between;
-
-  gap: 20px;
-
-  flex-wrap: wrap;
-
-  margin-bottom: 10px;
-}
-
-.search-box input {
-  background: var(--surface);
-
-  border:
-    1px solid var(--border);
-
-  color: var(--text);
-
-  padding: 10px 18px;
-
-  border-radius: 999px;
-
-  font-size: 14px;
-
-  width: 260px;
-
-  outline: none;
-
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
-}
-
-.search-box input:focus {
-  border-color: var(--accent);
-
-  box-shadow:
-    0 0 20px rgba(255,0,0,0.15);
-}
-
-.search-box input::placeholder {
-  color: var(--text-variant);
-}
-
-
-/* ═══════════════════════════════════════
-   LOADING
-   ═══════════════════════════════════════ */
-
-.loading {
-  display: flex;
-
-  flex-direction: column;
-
-  align-items: center;
-
-  gap: 16px;
-
-  padding: 60px 0;
-
-  color: var(--text-dim);
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-
-  border:
-    3px solid var(--border);
-
-  border-top-color:
-    var(--accent);
-
-  border-radius: 50%;
-
-  animation:
-    spin 0.8s linear infinite;
-
-  box-shadow:
-    0 0 20px rgba(255,0,0,0.25);
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.progress-bar {
-  width: 300px;
-
-  height: 5px;
-
-  background: var(--surface-high);
-
-  border-radius: 4px;
-
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-
-  background: var(--accent);
-
-  border-radius: 4px;
-
-  transition: width 0.3s;
-
-  width: 0%;
-
-  box-shadow:
-    0 0 12px rgba(255,0,0,0.6);
-}
-
-
-/* ═══════════════════════════════════════
-   CONCERTS
-   ═══════════════════════════════════════ */
-
-.concerts-list {
-  display: flex;
-
-  flex-direction: column;
-
   gap: 14px;
-
-  margin-top: 20px;
-}
-
-.artist-section {
-  margin-bottom: 30px;
-}
-
-.artist-section-header {
-  display: flex;
-
-  align-items: center;
-
-  gap: 12px;
-
-  margin-bottom: 14px;
-
-  padding-bottom: 10px;
-
-  border-bottom:
-    1px solid var(--border);
-}
-
-.artist-section-header h3 {
-  font-size: 21px;
-
-  font-weight: 700;
-
-  letter-spacing: -0.5px;
-}
-
-.track-badge {
-  font-size: 12px;
-
-  background:
-    rgba(255,23,23,0.15);
-
-  color: var(--accent);
-
-  padding: 4px 12px;
-
-  border-radius: 999px;
-
-  font-weight: 600;
-}
-
-.concert-card {
-  background: var(--surface);
-
-  border:
-    1px solid var(--border);
-
-  border-radius: var(--radius);
-
-  padding: 20px;
-
-  display: grid;
-
-  grid-template-columns:
-    auto 1fr auto;
-
-  gap: 20px;
-
-  align-items: center;
-
-  transition: all 0.25s;
-}
-
-.concert-card:hover {
-  border-color: var(--accent);
-
-  transform:
-    translateY(-2px);
-
-  box-shadow:
-    0 10px 35px rgba(255,0,0,0.15);
-}
-
-.concert-date-box {
-  text-align: center;
-
-  min-width: 68px;
-
-  padding: 12px 14px;
-
-  background:
-    rgba(0,0,0,0.25);
-
-  border:
-    1px solid var(--border);
-
-  border-radius:
-    var(--radius-sm);
-}
-
-.concert-date-box .day {
-  font-size: 28px;
-
+  padding: 22px 58px;
+  background: #1DB954;
+  color: #00280f;
+  font-size: 19px;
   font-weight: 800;
-
-  line-height: 1;
-
-  color: var(--accent);
-}
-
-.concert-date-box .month {
-  font-size: 12px;
-
-  font-weight: 700;
-
-  color: var(--text-dim);
-
-  text-transform: uppercase;
-}
-
-.concert-date-box .year {
-  font-size: 11px;
-
-  color: var(--text-variant);
-}
-
-.concert-info {
-  display: flex;
-
-  flex-direction: column;
-
-  gap: 6px;
-}
-
-.concert-venue {
-  font-size: 16px;
-
-  font-weight: 600;
-}
-
-.concert-location {
-  font-size: 13px;
-
-  color: var(--text-dim);
-}
-
-.concert-tags {
-  display: flex;
-
-  flex-wrap: wrap;
-
-  gap: 8px;
-
-  margin-top: 4px;
-}
-
-.concert-tag {
-  font-size: 11px;
-
-  padding: 4px 11px;
-
   border-radius: 999px;
-
-  background:
-    rgba(255,23,23,0.15);
-
-  color: var(--accent);
-
-  font-weight: 600;
-}
-
-.concert-tag.source {
-  background:
-    var(--surface-high);
-
-  color:
-    var(--text-dim);
-}
-
-.concert-actions {
-  display: flex;
-
-  flex-direction: column;
-
-  align-items: flex-end;
-
-  gap: 8px;
-}
-
-.btn-ticket {
-  display: inline-flex;
-
-  align-items: center;
-
-  gap: 8px;
-
-  padding: 11px 26px;
-
-  background: var(--accent);
-
-  color: white;
-
-  font-size: 14px;
-
-  font-weight: 700;
-
-  border-radius: 999px;
-
   text-decoration: none;
-
-  transition: all 0.2s;
-
-  box-shadow:
-    0 6px 20px rgba(255,0,0,0.25);
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 14px 50px rgba(0,0,0,0.45), 0 0 40px rgba(29,185,84,0.6);
 }
+.btn-spotify:hover { transform: translateY(-3px) scale(1.04); }
+.spotify-logo { width: 30px; height: 30px; }
+.hero-note { margin-top: 28px; font-size: 14px; color: #fff; opacity: 0.85; }
 
-.btn-ticket:hover {
-  background:
-    #ff2929;
-
-  transform:
-    translateY(-1px);
-
-  box-shadow:
-    0 8px 30px rgba(255,0,0,0.45);
+/* ═══════ TOPBAR ═══════ */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 28px;
+  background: rgba(60,5,5,0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
 }
-
-
-/* ═══════════════════════════════════════
-   EMPTY STATE
-   ═══════════════════════════════════════ */
-
-.empty-state {
-  text-align: center;
-
-  padding: 80px 20px;
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.logo-small {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  background: #ff1e1e;
+  border-radius: 50%;
+  box-shadow: 0 8px 24px var(--accent-glow);
 }
+.logo-text { font-size: 18px; font-weight: 700; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.alerts-badge { background: rgba(0,0,0,0.4); color: #fff; border: 1px solid #fff; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.btn-sm { padding: 7px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; }
+.btn-outline { background: rgba(0,0,0,0.35); border: 1px solid #fff; color: #fff; }
+.btn-outline:hover { background: #fff; color: #c00d0d; }
 
-.empty-icon {
-  font-size: 64px;
-
-  margin-bottom: 16px;
-
-  display: block;
-}
-
-.empty-state h3 {
-  font-size: 22px;
-
-  margin-bottom: 8px;
-}
-
-.empty-state p {
-  color: var(--text-dim);
-}
-
-
-/* ═══════════════════════════════════════
-   TOAST
-   ═══════════════════════════════════════ */
-
-.toast-container {
-  position: fixed;
-
-  top: 20px;
-  right: 20px;
-
-  z-index: 9999;
-
-  display: flex;
-
-  flex-direction: column;
-
-  gap: 10px;
-}
-
-.toast {
-  padding: 14px 20px;
-
-  background:
-    #350008;
-
-  border:
-    1px solid var(--accent);
-
-  border-radius:
-    var(--radius-sm);
-
-  color: var(--text);
-
-  font-size: 14px;
-
-  box-shadow:
-    0 8px 30px rgba(0,0,0,0.5),
-    0 0 20px rgba(255,0,0,0.15);
-
-  animation:
-    slideIn 0.3s ease-out;
-
-  display: flex;
-
-  align-items: center;
-
-  gap: 10px;
-
-  max-width: 400px;
-}
-
-@keyframes slideIn {
-  from {
-    transform:
-      translateX(100%);
-
-    opacity: 0;
-  }
-
-  to {
-    transform:
-      translateX(0);
-
-    opacity: 1;
-  }
-}
-
-.toast-close {
-  background: none;
-
-  border: none;
-
-  color: var(--text-dim);
-
-  cursor: pointer;
-
-  font-size: 16px;
-
-  margin-left: auto;
-}
-
-
-/* ═══════════════════════════════════════
-   MOBILE
-   ═══════════════════════════════════════ */
+/* ═══════ CONTENT ═══════ */
+.content { max-width: 1000px; margin: 0 auto; padding: 36px 28px 80px; width: 100%; }
+.content h2 { font-size: 30px; font-weight: 800; }
+.hint { color: var(--text-dim); font-size: 14px; margin-top: 6px; }
+.artist-input-area { margin-top: 20px; }
+.input-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.input-row input { flex: 1; padding: 14px 18px; background: rgba(0,0,0,0.35); border: 1px solid #fff; border-radius: var(--radius-sm); color: #fff; font-size: 15px; font-family: inherit; outline: none; }
+.input-row input::placeholder { color: var(--text-dim); }
+.btn-add { padding: 14px 22px; background: #fff; color: #c00d0d; border: none; border-radius: var(--radius-sm); font-weight: 800; font-size: 15px; cursor: pointer; }
+.artist-tags { display: flex; flex-wrap: wrap; gap: 8px; min-height: 20px; margin-bottom: 16px; }
+.artist-tag { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(0,0,0,0.4); border: 1px solid #fff; color: #fff; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.artist-tag button { background: transparent; border: none; color: #fff; cursor: pointer; }
+.artist-suggestions { margin-top: 6px; }
+.suggestion-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip { padding: 9px 18px; background: rgba(0,0,0,0.35); border: 1px solid #fff; border-radius: 999px; color: #fff; font-size: 13px; font-family: inherit; cursor: pointer; }
+.chip:hover { background: #fff; color: #c00d0d; }
+.search-bar-container { display: flex; align-items: center; gap: 16px; margin-top: 24px; }
+.btn-analyze { padding: 15px 34px; background: #fff; color: #c00d0d; border: none; border-radius: 999px; font-weight: 800; font-size: 15px; cursor: pointer; }
+.btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; }
+.section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 10px; }
+.search-box input { background: rgba(0,0,0,0.35); border: 1px solid #fff; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; width: 260px; outline: none; }
+.search-box input::placeholder { color: var(--text-dim); }
+.loading { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 60px 0; color: #fff; }
+.spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress-bar { width: 300px; height: 5px; background: rgba(0,0,0,0.4); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: #fff; border-radius: 4px; width: 0%; }
+.concerts-list { display: flex; flex-direction: column; gap: 14px; margin-top: 20px; }
+.artist-section { margin-bottom: 24px; }
+.artist-section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.4); }
+.artist-section-header h3 { font-size: 21px; font-weight: 800; }
+.track-badge { font-size: 12px; background: #fff; color: #c00d0d; padding: 4px 12px; border-radius: 999px; font-weight: 800; }
+.concert-card { background: rgba(0,0,0,0.38); border: 1px solid #fff; border-radius: var(--radius); padding: 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center; }
+.concert-date-box { text-align: center; min-width: 68px; padding: 12px 14px; background: rgba(0,0,0,0.45); border: 1px solid #fff; border-radius: var(--radius-sm); }
+.concert-date-box .day { font-size: 28px; font-weight: 800; line-height: 1; }
+.concert-date-box .month { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.concert-date-box .year { font-size: 11px; opacity: 0.8; }
+.concert-info { display: flex; flex-direction: column; gap: 6px; }
+.concert-venue { font-size: 16px; font-weight: 700; }
+.concert-location { font-size: 13px; opacity: 0.9; }
+.concert-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.concert-tag { font-size: 11px; padding: 4px 11px; border-radius: 999px; background: #fff; color: #c00d0d; font-weight: 700; }
+.concert-tag.source { background: rgba(0,0,0,0.5); color: #fff; border: 1px solid #fff; }
+.concert-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.btn-ticket { display: inline-flex; align-items: center; gap: 8px; padding: 11px 26px; background: #fff; color: #c00d0d; font-size: 14px; font-weight: 800; border-radius: 999px; text-decoration: none; }
+.empty-state { text-align: center; padding: 80px 20px; }
+.empty-icon { font-size: 64px; margin-bottom: 16px; display: block; }
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+.toast { padding: 14px 20px; background: #2a0505; border: 1px solid #fff; border-radius: var(--radius-sm); color: #fff; font-size: 14px; display: flex; align-items: center; gap: 10px; max-width: 400px; }
+.toast-close { background: none; border: none; color: #fff; cursor: pointer; margin-left: auto; }
 
 @media (max-width: 640px) {
-
-  .hero-title {
-    font-size: 36px;
-  }
-
-  .hero-sub {
-    font-size: 16px;
-  }
-
-  .btn-spotify {
-    padding: 16px 34px;
-  }
-
-  .logo {
-    width: 78px;
-    height: 78px;
-
-    font-size: 38px;
-  }
-
-  .hero-glow {
-    width: 420px;
-    height: 420px;
-  }
-
-  .concert-card {
-    grid-template-columns:
-      auto 1fr;
-  }
-
-  .concert-actions {
-    grid-column: 1 / -1;
-
-    flex-direction: row;
-
-    align-items: center;
-
-    justify-content: flex-start;
-  }
-
-  .search-box input {
-    width: 100%;
-  }
-
-  .section-header {
-    flex-direction: column;
-  }
-
-  .topbar {
-    padding: 12px 16px;
-  }
-
-  .content {
-    padding:
-      24px 16px 60px;
-  }
-
-  .input-row {
-    flex-direction: column;
-  }
-
-  .btn-add {
-    width: 100%;
-  }
-
-  .search-bar-container {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .progress-bar {
-    width: 90%;
-    max-width: 300px;
-  }
+  .hero-title { font-size: 38px; }
+  .btn-spotify { padding: 18px 36px; font-size: 17px; }
+  .concert-card { grid-template-columns: auto 1fr; }
+  .concert-actions { grid-column: 1 / -1; flex-direction: row; }
+  .search-box input { width: 100%; }
+  .section-header { flex-direction: column; }
+  .topbar { padding: 12px 16px; }
+  .content { padding: 24px 16px 60px; }
 }
-```
