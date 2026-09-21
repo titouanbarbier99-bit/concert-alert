@@ -86,13 +86,27 @@ function renderFavsList() {
   const el = document.getElementById('favs-count');
   if (el) el.textContent = favs.length;
   if (!favs.length) { list.innerHTML = '<p class="hint">Aucun favori pour l’instant. Clique sur 🤍 sur un concert.</p>'; return; }
+  const now = Date.now();
+  const withDays = favs.map(f => {
+    const d = new Date(f.date);
+    const days = isNaN(d) ? 9999 : Math.ceil((d.getTime() - now) / 86400000);
+    return { f, days };
+  }).sort((a, b) => a.days - b.days);
+  const soon = withDays.filter(x => x.days >= 0 && x.days <= 7);
   list.innerHTML = '';
-  favs.forEach(f => {
+  if (soon.length) {
+    const alert = document.createElement('div');
+    alert.className = 'fav-item fav-soon';
+    alert.innerHTML = `<b>⏰ ${soon.length} concert(s) dans 7 jours !</b><span>${soon.map(x => `${x.f.name} (J-${x.days})`).join(' • ')}</span>`;
+    list.appendChild(alert);
+  }
+  withDays.forEach(({ f, days }) => {
     const d = document.createElement('div');
     d.className = 'fav-item';
     const date = formatDate(f.date);
     const ds = date ? `${date.day} ${date.month} ${date.year}` : 'date ?';
-    d.innerHTML = `<b>${f.name}</b><span>${f.venue} — ${f.city}${f.country ? ', ' + f.country : ''} • ${ds}</span><div class="row">${f.url ? `<a href="${f.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}<button onclick="removeFav('${encodeURIComponent(favKey(f))}')">Retirer ✕</button></div>`;
+    const tag = days < 0 ? '✅ passé' : days === 0 ? "🔥 aujourd'hui" : days === 1 ? '🔥 demain' : `⏳ J-${days}`;
+    d.innerHTML = `<b>${f.name}</b><span>${f.venue} — ${f.city}${f.country ? ', ' + f.country : ''} • ${ds} • ${tag}</span><div class="row">${f.url ? `<a href="${f.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}<button onclick="removeFav('${encodeURIComponent(favKey(f))}')">Retirer ✕</button></div>`;
     list.appendChild(d);
   });
 }
