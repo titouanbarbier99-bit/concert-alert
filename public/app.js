@@ -7,17 +7,8 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
-
-function logout() {
-  window.location.href = '/logout';
-}
-
-function changeAccount() {
-  fetch('/logout').then(() => {
-    window.location.href = '/login';
-  });
-}
-
+function logout() { window.location.href = '/logout'; }
+function changeAccount() { fetch('/logout').then(() => { window.location.href = '/login'; }); }
 function showToast(msg, type = 'info') {
   const t = document.createElement('div');
   t.className = 'toast';
@@ -28,12 +19,10 @@ function showToast(msg, type = 'info') {
   document.getElementById('toast-container').appendChild(t);
   setTimeout(() => t.remove(), 5000);
 }
-
 function updateArtistCount() {
   const el = document.getElementById('artist-count');
   if (el) el.textContent = `${artists.length} artiste${artists.length > 1 ? 's' : ''}`;
 }
-
 function renderTags() {
   const tags = document.getElementById('artist-tags');
   tags.innerHTML = '';
@@ -44,7 +33,6 @@ function renderTags() {
     tags.appendChild(t);
   });
 }
-
 function addArtist() {
   const input = document.getElementById('artist-input');
   const name = input.value.trim();
@@ -54,20 +42,17 @@ function addArtist() {
   document.getElementById('btn-search').disabled = artists.length === 0;
   updateArtistCount();
 }
-
 function addArtistDirect(name) {
   if (!artists.includes(name)) { artists.push(name); renderTags(); }
   document.getElementById('btn-search').disabled = artists.length === 0;
   updateArtistCount();
 }
-
 function removeArtist(i) {
   artists.splice(i, 1);
   renderTags();
   document.getElementById('btn-search').disabled = artists.length === 0;
   updateArtistCount();
 }
-
 async function searchConcerts() {
   if (artists.length === 0) return;
   showScreen('screen-alerts');
@@ -77,10 +62,8 @@ async function searchConcerts() {
   loading.style.display = 'flex';
   container.innerHTML = '';
   noConcerts.style.display = 'none';
-
   const results = [];
   const ticketByName = new Map();
-
   try {
     const res = await fetch('/api/multi-artist', {
       method: 'POST',
@@ -92,30 +75,21 @@ async function searchConcerts() {
       (data || []).forEach(r => { if (r && r.concert) ticketByName.set(r.name, r); });
     }
   } catch (e) {}
-
   for (const name of artists) {
     const tm = ticketByName.get(name);
-    if (!tm) {
-      results.push({ name, popularity: artistPop[name] || null, concert: null });
-      continue;
-    }
+    if (!tm) { results.push({ name, popularity: artistPop[name] || null, concert: null }); continue; }
     results.push({ name, popularity: artistPop[name] || null, concert: tm.concert });
   }
-
   loading.style.display = 'none';
   const withConcerts = results.filter(r => r.concert);
   if (withConcerts.length === 0) { noConcerts.style.display = 'block'; }
   else {
     withConcerts.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     renderConcerts(withConcerts);
-    const count = withConcerts.length;
-    document.getElementById('alerts-count').textContent = count + ' concert' + (count > 1 ? 's' : '');
+    document.getElementById('alerts-count').textContent = withConcerts.length + ' concert' + (withConcerts.length > 1 ? 's' : '');
   }
-  // AJOUT : top monde en dessous, sans toucher au dessus
   loadTopWorld();
 }
-
-// === AJOUT : charge le top monde et l'affiche en dessous ===
 async function loadTopWorld() {
   const container = document.getElementById('concerts-container');
   try {
@@ -131,7 +105,6 @@ async function loadTopWorld() {
     renderTopWorld(list);
   } catch (e) {}
 }
-
 function renderTopWorld(list) {
   const container = document.getElementById('concerts-container');
   list.forEach(r => {
@@ -140,33 +113,16 @@ function renderTopWorld(list) {
     const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
     const s = document.createElement('div');
     s.className = 'artist-section';
-    s.innerHTML = `
-      <div class="artist-section-header">
-        <h3>${r.name}</h3>
-      </div>
-      <div class="concert-card">
-        ${monthHtml}
-        <div class="concert-info">
-          <div class="concert-venue">${r.concert.venue}</div>
-          <div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div>
-          <div class="concert-tags">
-            <span class="concert-tag source">${r.concert.source}</span>
-          </div>
-        </div>
-        ${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}
-      </div>
-    `;
+    s.innerHTML = `<div class="artist-section-header"><h3>${r.name}</h3></div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${r.concert.venue}</div><div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${r.concert.source}</span></div></div>${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}</div>`;
     container.appendChild(s);
   });
 }
-
 function formatDate(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d)) return null;
   return { day: d.getDate(), month: MOIS_FR[d.getMonth()], year: d.getFullYear() };
 }
-
 function renderConcerts(results) {
   const container = document.getElementById('concerts-container');
   container.innerHTML = '';
@@ -176,30 +132,12 @@ function renderConcerts(results) {
     const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
     const section = document.createElement('div');
     section.className = 'artist-section';
-    section.innerHTML = `
-      <div class="artist-section-header">
-        <h3>${r.name}</h3>
-        ${r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : ''}
-      </div>
-      <div class="concert-card">
-        ${monthHtml}
-        <div class="concert-info">
-          <div class="concert-venue">${r.concert.venue}</div>
-          <div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div>
-          <div class="concert-tags">
-            <span class="concert-tag source">${r.concert.source}</span>
-          </div>
-        </div>
-        ${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}
-      </div>
-    `;
+    section.innerHTML = `<div class="artist-section-header"><h3>${r.name}</h3>${r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : ''}</div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${r.concert.venue}</div><div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${r.concert.source}</span></div></div>${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}</div>`;
     container.appendChild(section);
   });
   _allRendered = results;
 }
-
 let _allRendered = [];
-
 function filterConcerts(value) {
   const v = value.trim().toLowerCase();
   const container = document.getElementById('concerts-container');
@@ -214,27 +152,10 @@ function filterConcerts(value) {
     const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
     const s = document.createElement('div');
     s.className = 'artist-section';
-    s.innerHTML = `
-      <div class="artist-section-header">
-        <h3>${r.name}</h3>
-        ${r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : ''}
-      </div>
-      <div class="concert-card">
-        ${monthHtml}
-        <div class="concert-info">
-          <div class="concert-venue">${r.concert.venue}</div>
-          <div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div>
-          <div class="concert-tags">
-            <span class="concert-tag source">${r.concert.source}</span>
-          </div>
-        </div>
-        ${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}
-      </div>
-    `;
+    s.innerHTML = `<div class="artist-section-header"><h3>${r.name}</h3>${r.popularity ? `<span class="track-badge">Pop ${r.popularity}</span>` : ''}</div><div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${r.concert.venue}</div><div class="concert-location">${r.concert.city}${r.concert.country ? ', ' + r.concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${r.concert.source}</span></div></div>${r.concert.url ? `<div class="concert-actions"><a class="btn-ticket" href="${r.concert.url}" target="_blank" rel="noopener">🎫 Billets</a></div>` : ''}</div>`;
     container.appendChild(s);
   });
 }
-
 (async function init() {
   try {
     const me = await fetch('/api/me');
@@ -250,13 +171,7 @@ function filterConcerts(value) {
         updateArtistCount();
         document.getElementById('artist-summary').textContent = `${my.artists.length} artistes importés depuis ton Spotify`;
         searchConcerts();
-      } else {
-        showScreen('screen-artists');
-      }
-    } else {
-      showScreen('screen-login');
-    }
-  } catch (e) {
-    showScreen('screen-login');
-  }
+      } else { showScreen('screen-artists'); }
+    } else { showScreen('screen-login'); }
+  } catch (e) { showScreen('screen-login'); }
 })();
