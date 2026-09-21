@@ -156,10 +156,14 @@ function mapTmEvent(e) {
 async function findAttractionId(name) {
   try {
     const target = normalizeArtist(name);
-    const u = 'https://app.ticketmaster.com/discovery/v2/attractions.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=20';
+    const u = 'https://app.ticketmaster.com/discovery/v2/attractions.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=20&locale=fr-fr';
     const data = await get(u);
     const list = (data._embedded && data._embedded.attractions) || [];
     for (const a of list) { if (normalizeArtist(a.name) === target) return a.id; }
+    const u2 = 'https://app.ticketmaster.com/discovery/v2/attractions.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=20';
+    const data2 = await get(u2);
+    const list2 = (data2._embedded && data2._embedded.attractions) || [];
+    for (const a of list2) { if (normalizeArtist(a.name) === target) return a.id; }
     return null;
   } catch (e) { return null; }
 }
@@ -168,10 +172,16 @@ async function findTicketmasterExact(name) {
   const attId = await findAttractionId(name);
   if (attId) {
     try {
-      const u = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=20&sort=date,asc';
+      const u = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=20&sort=date,asc&locale=fr-fr';
       const data = await get(u);
       const ev = (data._embedded && data._embedded.events) || [];
       all = all.concat(ev.map(mapTmEvent));
+    } catch (e) {}
+    try {
+      const uW = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&attractionId=' + attId + '&size=20&sort=date,asc';
+      const dataW = await get(uW);
+      const evW = (dataW._embedded && dataW._embedded.events) || [];
+      all = all.concat(evW.map(mapTmEvent));
     } catch (e) {}
   }
   const seen = new Set();
