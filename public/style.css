@@ -196,3 +196,30 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .orb { animation: none; }
 }
+/* ═══════ ANIMATIONS — ça bouge ═══════ */
+.hero-glass { animation: popIn 0.7s cubic-bezier(0.2, 0.9, 0.25, 1.2); }
+@keyframes popIn { from { transform: translateY(24px) scale(0.97); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+
+.logo { animation: floatLogo 3.2s ease-in-out infinite; }
+@keyframes floatLogo { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-8px) rotate(-4deg); } }
+
+.btn-spotify { animation: pulseBtn 2.4s ease-in-out infinite; }
+@keyframes pulseBtn { 0%,100% { box-shadow: 0 12px 30px rgba(0,0,0,0.25); transform: scale(1); } 50% { box-shadow: 0 12px 36px rgba(255,106,0,0.45); transform: scale(1.02); } }
+
+.glass-card { transition: transform 0.25s; animation: fadeUp 0.6s ease both; }
+.glass-card:nth-child(2) { animation-delay: 0.1s; }
+.glass-card:nth-child(3) { animation-delay: 0.2s; }
+.glass-card:hover { transform: translateY(-6px) scale(1.02); }
+@keyframes fadeUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.concert-card { animation: slideIn 0.45s ease both; transition: transform 0.2s; }
+.concert-card:hover { transform: translateY(-3px) scale(1.01); }
+@keyframes slideIn { from { transform: translateX(-14px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.chip, .btn-add, .btn-analyze { transition: transform 0.18s; }
+.chip:hover { transform: translateY(-2px) scale(1.04); }
+.btn-add:hover, .btn-analyze:hover { transform: scale(1.04); }
+
+.hero-stats .stat { animation: fadeUp 0.6s ease both; }
+.hero-stats .stat:nth-child(2) { animation-delay: 0.12s; }
+.hero-stats .stat:nth-child(3) { animation-delay: 0.24s; }
