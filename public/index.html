@@ -120,25 +120,31 @@
       </div>
     </div>
     <div class="filter-bar glass-panel">
-      <select id="country-filter" onchange="applyFilters()">
-        <option value="ALL">🌍 Monde entier</option>
-        <option value="FR">🇫🇷 France uniquement</option>
-      </select>
+      <div class="filter-row">
+        <span id="country-flag" class="country-flag">🌍</span>
+        <select id="country-filter" onchange="applyFilters()">
+          <option value="ALL">Monde entier</option>
+          <option value="FR">France uniquement</option>
+        </select>
+      </div>
       <div id="fr-regions" class="fr-regions" style="display:none">
-        <button class="chip region-chip" data-region="ALL" onclick="selectRegion('ALL')">Toute la France</button>
-        <button class="chip region-chip" data-region="IDF" onclick="selectRegion('IDF')">Île-de-France</button>
-        <button class="chip region-chip" data-region="ARA" onclick="selectRegion('ARA')">Auvergne-Rhône-Alpes</button>
-        <button class="chip region-chip" data-region="PAC" onclick="selectRegion('PAC')">Provence (PACA)</button>
-        <button class="chip region-chip" data-region="OCC" onclick="selectRegion('OCC')">Occitanie</button>
-        <button class="chip region-chip" data-region="NAQ" onclick="selectRegion('NAQ')">Nouvelle-Aquitaine</button>
-        <button class="chip region-chip" data-region="HDF" onclick="selectRegion('HDF')">Hauts-de-France</button>
-        <button class="chip region-chip" data-region="GES" onclick="selectRegion('GES')">Grand Est</button>
-        <button class="chip region-chip" data-region="BRE" onclick="selectRegion('BRE')">Bretagne</button>
-        <button class="chip region-chip" data-region="PDL" onclick="selectRegion('PDL')">Pays de la Loire</button>
-        <button class="chip region-chip" data-region="NOR" onclick="selectRegion('NOR')">Normandie</button>
-        <button class="chip region-chip" data-region="BFC" onclick="selectRegion('BFC')">Bourgogne-Fr-Comté</button>
-        <button class="chip region-chip" data-region="CVL" onclick="selectRegion('CVL')">Centre-Val de Loire</button>
-        <button class="chip region-chip" data-region="COR" onclick="selectRegion('COR')">Corse</button>
+        <svg id="fr-map" viewBox="0 0 360 360" role="img" aria-label="Carte de France cliquable">
+          <g class="fr-map-region" data-region="HDF" onclick="selectRegion('HDF')"><ellipse cx="205" cy="60" rx="48" ry="30"/><text x="205" y="64">Hauts-de-Fr</text></g>
+          <g class="fr-map-region" data-region="NOR" onclick="selectRegion('NOR')"><ellipse cx="115" cy="95" rx="52" ry="30"/><text x="115" y="99">Normandie</text></g>
+          <g class="fr-map-region" data-region="IDF" onclick="selectRegion('IDF')"><ellipse cx="200" cy="115" rx="42" ry="30"/><text x="200" y="119">Île-de-Fr</text></g>
+          <g class="fr-map-region" data-region="GES" onclick="selectRegion('GES')"><ellipse cx="290" cy="115" rx="55" ry="38"/><text x="290" y="119">Grand Est</text></g>
+          <g class="fr-map-region" data-region="BRE" onclick="selectRegion('BRE')"><ellipse cx="70" cy="145" rx="48" ry="28"/><text x="70" y="149">Bretagne</text></g>
+          <g class="fr-map-region" data-region="PDL" onclick="selectRegion('PDL')"><ellipse cx="130" cy="175" rx="50" ry="30"/><text x="130" y="179">P. Loire</text></g>
+          <g class="fr-map-region" data-region="CVL" onclick="selectRegion('CVL')"><ellipse cx="195" cy="170" rx="48" ry="30"/><text x="195" y="174">Centre</text></g>
+          <g class="fr-map-region" data-region="BFC" onclick="selectRegion('BFC')"><ellipse cx="260" cy="180" rx="52" ry="34"/><text x="260" y="184">Bourgogne</text></g>
+          <g class="fr-map-region" data-region="NAQ" onclick="selectRegion('NAQ')"><ellipse cx="140" cy="245" rx="62" ry="42"/><text x="140" y="249">N.-Aquitaine</text></g>
+          <g class="fr-map-region" data-region="ARA" onclick="selectRegion('ARA')"><ellipse cx="250" cy="245" rx="58" ry="42"/><text x="250" y="249">AURA</text></g>
+          <g class="fr-map-region" data-region="OCC" onclick="selectRegion('OCC')"><ellipse cx="180" cy="305" rx="62" ry="34"/><text x="180" y="309">Occitanie</text></g>
+          <g class="fr-map-region" data-region="PAC" onclick="selectRegion('PAC')"><ellipse cx="280" cy="305" rx="52" ry="32"/><text x="280" y="309">PACA</text></g>
+          <g class="fr-map-region" data-region="COR" onclick="selectRegion('COR')"><ellipse cx="310" cy="345" rx="26" ry="14"/><text x="310" y="348">Corse</text></g>
+          <g class="fr-map-region" data-region="ALL" onclick="selectRegion('ALL')"><ellipse cx="60" cy="300" rx="42" ry="26"/><text x="60" y="304">Tout 🇫🇷</text></g>
+        </svg>
+        <p class="hint">Clique sur une région de la carte 👆</p>
       </div>
     </div>
     <div id="artists-loading" class="loading" style="display:none">
