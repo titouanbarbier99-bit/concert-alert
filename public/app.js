@@ -3,7 +3,6 @@ let artistPop = {};
 
 const MOIS_FR = ["janv","févr","mars","avr","mai","juin","juil","août","sept","oct","nov","déc"];
 const FAV_KEY = 'leet_favs';
-const SEEN_KEY = 'leet_seen';
 window._concertStore = {};
 let _favId = 0;
 let selectedRegion = 'ALL';
@@ -39,40 +38,6 @@ function applyFilters() {
   if (flag) flag.textContent = country === 'FR' ? '🇫🇷' : '🌍';
   filterConcerts(document.getElementById('search-artist').value || '');
 }
-
-// === AGENT ALERTE ===
-function getSeen() { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); } catch (e) { return []; } }
-function markSeen(list) {
-  const keys = new Set(getSeen());
-  list.forEach(c => keys.add((c.name || '') + '|' + (c.venue || '') + '|' + (c.date || '')));
-  localStorage.setItem(SEEN_KEY, JSON.stringify([...keys].slice(-500)));
-}
-function isNewConcert(name, cc) {
-  return !getSeen().includes(name + '|' + cc.venue + '|' + cc.date);
-}
-async function agentCheck() {
-  if (!artists.length) return;
-  try {
-    const res = await fetch('/api/multi-artist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ artists })
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    const fresh = [];
-    data.forEach(r => {
-      (r.concerts || (r.concert ? [r.concert] : [])).forEach(cc => {
-        if (cc.country === 'FR' && isNewConcert(r.name, cc)) fresh.push({ name: r.name, venue: cc.venue, date: cc.date });
-      });
-    });
-    if (fresh.length) {
-      showToast(`🔔 ${fresh.length} nouveau(x) concert(s) FR !`, 'success');
-      markSeen(fresh);
-    }
-  } catch (e) {}
-}
-setInterval(agentCheck, 10 * 60 * 1000);
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -224,11 +189,6 @@ async function searchConcerts() {
     document.getElementById('artist-summary').textContent = `${withConcerts.length} artistes • ${total} dates (France d'abord)`;
   }
   loadTopWorld();
-  try {
-    const all = [];
-    _allRendered.forEach(r => (r.concerts || []).forEach(cc => all.push({ name: r.name, venue: cc.venue, date: cc.date })));
-    markSeen(all);
-  } catch (e) {}
 }
 async function loadTopWorld() {
   try {
@@ -263,8 +223,7 @@ function concertCard(name, concert) {
   const date = formatDate(concert.date);
   const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
   const c = { name, venue: concert.venue, city: concert.city, country: concert.country, date: concert.date, url: concert.url };
-  const isNew = isNewConcert(name, concert);
-  return `<div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${concert.venue}</div><div class="concert-location">${concert.city}${concert.country ? ', ' + concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${concert.source}</span>${concert.country === 'FR' ? '<span class="concert-tag">🇫🇷 France</span>' : ''}${isNew ? '<span class="concert-tag new-tag">🔔 NOUVEAU</span>' : ''}</div></div><div class="concert-actions">${favButton(c)}${concert.url ? `<a class="btn-ticket" href="${concert.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}</div></div>`;
+  return `<div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${concert.venue}</div><div class="concert-location">${concert.city}${concert.country ? ', ' + concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${concert.source}</span>${concert.country === 'FR' ? '<span class="concert-tag">🇫🇷 France</span>' : ''}</div></div><div class="concert-actions">${favButton(c)}${concert.url ? `<a class="btn-ticket" href="${concert.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}</div></div>`;
 }
 function renderTopWorld(list) {
   const container = document.getElementById('concerts-container');
@@ -322,4 +281,40 @@ function filterConcerts(value) {
     return (r.concerts || []).some(matchCountry);
   });
   filtered.forEach(r => {
-    const concerts = (r
+    const concerts = (r.concerts || []).filter(cc => {
+      if (!matchCountry(cc)) return false;
+      if (!v || v === 'favoris' || v === '❤️') return true;
+      if (r.name.toLowerCase().includes(v)) return true;
+      return cc.venue.toLowerCase().includes(v) || cc.city.toLowerCase().includes(v);
+    });
+    if (!concerts.length) return;
+    const s = document.createElement('div');
+    s.className = 'artist-section';
+    let html = `<div class="artist-section-header"><h3>${r.name}</h3><span class="track-badge">${concerts.length} date${concerts.length > 1 ? 's' : ''}</span></div>`;
+    concerts.forEach(cc => { html += concertCard(r.name, cc); });
+    s.innerHTML = html;
+    container.appendChild(s);
+  });
+  syncFavButtons();
+  renderTopWorldFiltered();
+}
+(async function init() {
+  updateFavsCount();
+  try {
+    const me = await fetch('/api/me');
+    const m = await me.json();
+    if (m.authenticated) {
+      const r = await fetch('/api/my-artists');
+      const my = await r.json();
+      artistPop = my.popMap || {};
+      if (my.artists && my.artists.length) {
+        artists = my.artists;
+        renderTags();
+        document.getElementById('btn-search').disabled = false;
+        updateArtistCount();
+        document.getElementById('artist-summary').textContent = `${my.artists.length} artistes importés depuis ton Spotify`;
+        searchConcerts();
+      } else { showScreen('screen-artists'); }
+    } else { showScreen('screen-login'); }
+  } catch (e) { showScreen('screen-login'); }
+})();
