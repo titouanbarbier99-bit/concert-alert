@@ -68,17 +68,12 @@ function normalizeArtist(name) {
   return (name || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-function tokens(s) { return normalizeArtist(s).split(' ').filter(Boolean); }
-
-// MATCH EXACT : tous les mots de l'artiste doivent apparaître en mots entiers
+// VRAI ARTISTE UNIQUEMENT : égalité exacte, pas de sous-texte
+// "drake" == "drake" OK, "drake milligan" KO, "ultimate coldplay" KO
 function artistMatches(name, event) {
-  const target = tokens(name);
-  if (!target.length) return false;
-  const att = tokens(event.artist || '');
-  const evn = tokens(event.eventName || '');
-  const hasAll = (list) => target.every(t => list.includes(t));
-  if (hasAll(att)) return true;
-  if (hasAll(evn)) return true;
+  const target = normalizeArtist(name);
+  const att = normalizeArtist(event.artist || '');
+  if (att && att === target) return true;
   return false;
 }
 
@@ -186,7 +181,7 @@ app.get('/api/my-artists', async (req, res) => {
 
 function mapTmEvent(e) {
   return {
-    artist: (e._embedded && e._embedded.attractions && e._embedded.attractions[0] && e._embedded.attractions[0].name) || e.name,
+    artist: (e._embedded && e._embedded.attractions && e._embedded.attractions[0] && e._embedded.attractions[0].name) || '',
     eventName: e.name || '',
     venue: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].name) || 'Lieu inconnu',
     city: (e._embedded && e._embedded.venues && e._embedded.venues[0] && e._embedded.venues[0].city && e._embedded.venues[0].city.name) || '',
@@ -197,22 +192,22 @@ function mapTmEvent(e) {
   };
 }
 
+// Cherche le VRAI ID : égalité exacte parmi 20 résultats, jamais le 1er au hasard
 async function findAttractionId(name) {
   try {
-    const u = 'https://app.ticketmaster.com/discovery/v2/attractions.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=5';
+    const target = normalizeArtist(name);
+    const u = 'https://app.ticketmaster.com/discovery/v2/attractions.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=20';
     const data = await get(u);
     const list = (data._embedded && data._embedded.attractions) || [];
-    const target = normalizeArtist(name);
     for (const a of list) {
       if (normalizeArtist(a.name) === target) return a.id;
     }
-    return list.length ? list[0].id : null;
+    return null;
   } catch (e) { return null; }
 }
 
 async function findTicketmasterExact(name) {
   let all = [];
-  // 1) par vrai ID artiste (le plus exact, monde entier)
   const attId = await findAttractionId(name);
   if (attId) {
     try {
@@ -222,23 +217,12 @@ async function findTicketmasterExact(name) {
       all = all.concat(ev.map(mapTmEvent));
     } catch (e) {}
   }
-  // 2) par mot-clé (monde entier, sans filtre pays)
-  try {
-    const u2 = 'https://app.ticketmaster.com/discovery/v2/events.json?apikey=' + TICKETMASTER_KEY + '&keyword=' + encodeURIComponent(name) + '&size=20&sort=date,asc&classificationName=music';
-    const data2 = await get(u2);
-    const ev2 = (data2._embedded && data2._embedded.events) || [];
-    all = all.concat(ev2.map(mapTmEvent));
-  } catch (e) {}
-
-  // déduplique par URL + date
   const seen = new Set();
   const uniq = [];
   for (const c of all) {
     const k = (c.url || '') + '|' + (c.date || '');
     if (!seen.has(k)) { seen.add(k); uniq.push(c); }
   }
-
-  // match EXACT + à venir, France d'abord puis monde
   const matched = uniq.filter(c => artistMatches(name, c)).filter(c => isUpcoming(c.date));
   matched.sort((a, b) => {
     const aFR = a.country === 'FR' ? 0 : 1;
@@ -259,7 +243,6 @@ app.post('/api/multi-artist', async (req, res) => {
     const c = matched[0];
     out.push({ name, popularity: null, concert: { venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url } });
   }
-  // FALLBACK : si aucun concert pour tes artistes → stars très connues
   const found = out.filter(o => o.concert).length;
   if (found === 0) {
     for (const star of FAMOUS_FALLBACK) {
