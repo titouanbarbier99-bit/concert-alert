@@ -299,3 +299,4 @@ body {
 .fav-item .row { display: flex; gap: 8px; margin-top: 6px; }
 .fav-item a { font-size: 12px; font-weight: 700; color: var(--orange); text-decoration: none; }
 .fav-item button { font-size: 12px; background: none; border: none; cursor: pointer; color: var(--text-dim); }
+.favs-open { top: auto !important; bottom: 24px; left: 16px; }
