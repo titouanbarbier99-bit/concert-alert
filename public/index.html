@@ -9,9 +9,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
+  <div class="bg-orbs"><span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span></div>
+
   <div id="screen-login" class="screen active">
     <div class="hero">
-      <div class="hero-glass">
+      <div class="hero-glass liquid">
+        <div class="liquid-shine"></div>
         <div class="logo">◉</div>
         <h1 class="hero-title">LEET</h1>
         <p class="hero-sub">Tes concerts, en avance. Tes artistes Spotify, tes dates en France et dans le monde.</p>
@@ -22,12 +25,23 @@
           Continuer avec Spotify
         </a>
         <p class="hero-note">Connexion sécurisée via Spotify</p>
+        <div class="hero-stats">
+          <div class="stat"><b>50+</b><span>artistes détectés</span></div>
+          <div class="stat"><b>FR</b><span>priorité France</span></div>
+          <div class="stat"><b>🌍</b><span>top monde inclus</span></div>
+        </div>
       </div>
+      <div class="feature-row">
+        <div class="glass-card"><span class="fc-ico">🔍</span><b>Détection auto</b><p>Playlists + top écoutés Spotify.</p></div>
+        <div class="glass-card"><span class="fc-ico">🇫🇷</span><b>France d'abord</b><p>Dates FR en priorité, monde ensuite.</p></div>
+        <div class="glass-card"><span class="fc-ico">🎫</span><b>Billets direct</b><p>Lien billetterie officiel.</p></div>
+      </div>
+      <p class="footer-note">LEET — ne rate plus jamais un concert.</p>
     </div>
   </div>
 
   <div id="screen-artists" class="screen">
-    <header class="topbar">
+    <header class="topbar liquid-bar">
       <div class="topbar-left">
         <span class="logo-small">◉</span>
         <span class="logo-text">LEET</span>
@@ -39,7 +53,7 @@
     <div class="content">
       <h2>Ajoute tes artistes</h2>
       <p class="hint">Tape le nom d'un artiste et clique "Ajouter" (ou Entrée)</p>
-      <div class="artist-input-area">
+      <div class="artist-input-area glass-panel">
         <div class="input-row">
           <input type="text" id="artist-input" placeholder="Ex: SCH, Dua Lipa, Coldplay..." onkeydown="if(event.key==='Enter')addArtist()">
           <button class="btn-add" onclick="addArtist()">+ Ajouter</button>
@@ -73,7 +87,7 @@
   </div>
 
   <div id="screen-alerts" class="screen">
-    <header class="topbar">
+    <header class="topbar liquid-bar">
       <div class="topbar-left">
         <span class="logo-small">◉</span>
         <span class="logo-text">LEET</span>
