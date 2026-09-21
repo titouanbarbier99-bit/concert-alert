@@ -27,12 +27,15 @@ function cityToRegion(city) {
 function selectRegion(r) {
   selectedRegion = r;
   document.querySelectorAll('.region-chip').forEach(b => b.classList.toggle('active', b.dataset.region === r));
+  document.querySelectorAll('.fr-map-region').forEach(g => g.classList.toggle('active', g.dataset.region === r));
   applyFilters();
 }
 function applyFilters() {
   const country = (document.getElementById('country-filter') || {}).value || 'ALL';
   const fr = document.getElementById('fr-regions');
-  if (fr) fr.style.display = country === 'FR' ? 'flex' : 'none';
+  if (fr) fr.style.display = country === 'FR' ? 'block' : 'none';
+  const flag = document.getElementById('country-flag');
+  if (flag) flag.textContent = country === 'FR' ? '🇫🇷' : '🌍';
   filterConcerts(document.getElementById('search-artist').value || '');
 }
 
