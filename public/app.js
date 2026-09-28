@@ -619,3 +619,110 @@ function filterConcerts(value) {
 
   new MutationObserver(renderWeekendAgent).observe(document.body, { childList: true, subtree: true });
 })();
+
+/* ==========================================================
+   AGENT 5 : DECOUVERTE PAR GENRE (LLM)
+   Colle ce bloc APRES le 3B si tu l'as, sinon ici
+   ========================================================== */
+(function () {
+  if (window.__agent5) return;
+  window.__agent5 = true;
+
+  var CITY_KEY = 'leet_home_city';
+  var REGION_KEY = 'leet_home_region';
+  var NAMES = {
+    IDF: "Île-de-France", ARA: "Auvergne-Rhône-Alpes", PAC: "Provence-Alpes-Côte d'Azur",
+    OCC: "Occitanie", NAQ: "Nouvelle-Aquitaine", HDF: "Hauts-de-France",
+    GES: "Grand Est", PDL: "Pays de la Loire", BRE: "Bretagne", NOR: "Normandie",
+    BFC: "Bourgogne-Franche-Comté", CVL: "Centre-Val de Loire", COR: "Corse"
+  };
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function scoreColor(s) {
+    if (s >= 8) return '#00b894';
+    if (s >= 6) return '#ff8a2e';
+    if (s >= 4) return '#fdcb6e';
+    return '#b2bec3';
+  }
+  function panel() {
+    var old = document.getElementById('a5-panel');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.id = 'a5-panel';
+    box.style.cssText = 'margin:0 0 18px;padding:16px;border-radius:20px;background:linear-gradient(135deg,rgba(255,138,46,.14),rgba(255,255,255,.72));border:1px solid rgba(255,138,46,.38);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)';
+    var city = localStorage.getItem(CITY_KEY) || '';
+    var region = localStorage.getItem(REGION_KEY) || '';
+    var opts = '<option value="">Toute la France</option>' +
+      Object.keys(NAMES).map(k => '<option value="' + k + '"' + (region === k ? ' selected' : '') + '>' + NAMES[k] + '</option>').join('');
+    box.innerHTML =
+      '<div style="font-weight:800;font-size:14px;margin-bottom:4px">🎵 Agent Découverte</div>'
+      + '<div style="font-size:12px;opacity:.7;margin-bottom:10px">L\'IA lit tes artistes Spotify et te propose des concerts proches de chez toi.</div>'
+      + '<input id="a5-city" type="text" placeholder="Ta ville (ex: Rouen)" value="' + esc(city) + '" '
+      + 'style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.8);font-size:13px;margin-bottom:8px">'
+      + '<select id="a5-region" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.8);font-size:13px;margin-bottom:10px">' + opts + '</select>'
+      + '<button id="a5-run" style="width:100%;padding:12px;border-radius:14px;border:0;background:linear-gradient(135deg,#ff8a2e,#ff6a00);color:#fff;font-weight:800;font-size:14px;cursor:pointer">✨ Trouver des artistes similaires</button>'
+      + '<div id="a5-out" style="margin-top:12px;font-size:13px"></div>';
+    var host = document.getElementById('concerts-container');
+    if (host) host.insertBefore(box, host.firstChild);
+    return box;
+  }
+  function render(items) {
+    var out = document.getElementById('a5-out');
+    if (!out) return;
+    if (!items.length) {
+      out.innerHTML = '<div style="padding:10px;opacity:.75">Aucune suggestion trouvée pour le moment.</div>';
+      return;
+    }
+    out.innerHTML = items.map((s, i) =>
+      '<div style="padding:11px;margin-bottom:8px;border-radius:14px;background:rgba(255,255,255,.72);border:1px solid rgba(0,0,0,.05)">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
+      + '<b style="font-size:14px">' + (i + 1) + '. ' + esc(s.name) + '</b>'
+      + '<span style="flex:0 0 auto;padding:3px 9px;border-radius:999px;background:' + scoreColor(s.score) + ';color:#fff;font-weight:800;font-size:12px">' + s.score + '/10</span>'
+      + '</div>'
+      + '<div style="margin-top:5px;line-height:1.45">' + esc(s.why) + '</div>'
+      + (s.dates && s.dates.length
+        ? '<div style="margin-top:6px;font-size:12px;opacity:.8">📅 ' + s.dates.map(esc).join(' · ') + '</div>'
+        : '')
+      + (s.near ? '<div style="margin-top:4px;font-size:11px;color:#00b894;font-weight:700">📍 Proche de chez toi</div>' : '')
+      + '</div>'
+    ).join('');
+  }
+  window.leetDiscover = async function () {
+    var cityEl = document.getElementById('a5-city');
+    var regEl = document.getElementById('a5-region');
+    var out = document.getElementById('a5-out');
+    var btn = document.getElementById('a5-run');
+    var city = cityEl ? cityEl.value.trim() : '';
+    var region = regEl ? regEl.value : '';
+    localStorage.setItem(CITY_KEY, city);
+    localStorage.setItem(REGION_KEY, region);
+    if (out) out.innerHTML = '<div style="padding:10px;opacity:.8">🤖 L\'IA analyse ton profil… (10-20 s)</div>';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyse…'; }
+    try {
+      var res = await fetch('/api/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ homeCity: city, region: region ? NAMES[region] : '' })
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || ('Erreur ' + res.status));
+      render(data.suggestions || []);
+    } catch (e) {
+      if (out) out.innerHTML = '<div style="padding:10px;color:#d63031;font-weight:700">❌ ' + esc(e.message) + '</div>';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '✨ Trouver des artistes similaires'; }
+    }
+  };
+  function inject() {
+    if (document.getElementById('a5-panel')) return;
+    if (!document.getElementById('concerts-container')) return;
+    var box = panel();
+    var btn = document.getElementById('a5-run');
+    if (btn) btn.onclick = window.leetDiscover;
+  }
+  new MutationObserver(inject).observe(document.body, { childList: true, subtree: true });
+})();
