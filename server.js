@@ -7,6 +7,10 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+process.on('unhandledRejection', (e) => { console.error('UNHANDLED REJECTION : ' + ((e && e.message) || e)); });
+process.on('uncaughtException', (e) => { console.error('UNCAUGHT EXCEPTION : ' + ((e && e.message) || e)); });
+const wrap = fn => (req, res) => { Promise.resolve(fn(req, res)).catch(e => { console.error('ROUTE ' + req.method + ' ' + req.path + ' -> ' + ((e && e.message) || e)); if (!res.headersSent) res.status(500).json({ error: 'Erreur serveur, reessaie' }); }); };
+
 
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
@@ -19,13 +23,17 @@ const GEMINI_FALLBACKS = ['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flas
 let GEMINI_MODEL = process.env.GEMINI_MODEL || GEMINI_DEFAULT;
 let GEMINI_MODEL_LOCKED = !!process.env.GEMINI_MODEL;
 
-const TM_TIMEOUT = 20000;
-const GEMINI_TIMEOUT = 60000;
+const TM_TIMEOUT = 15000;
+const TM_TIMEOUT_SHORT = 6000;
+const GEMINI_TIMEOUT = 40000;
 const GENRE_TTL = 6 * 60 * 60 * 1000;
+const PROFILE_BUDGET = 10000;
+const POOL_BUDGET = 32000;
+const HANDLER_BUDGET = 85000;
 
 
 const FAMOUS_FALLBACK = ["Taylor Swift","Coldplay","Ed Sheeran","Beyonce","Drake","Rihanna","Bruno Mars","Adele","The Weeknd","Dua Lipa"];
-const TOP_WORLD = ["Taylor Swift","Coldplay","Ed Sheeran","Beyonce","Drake","Rihanna","Bruno Mars","Adele","The Weeknd","Dua Lipa","Billie Eilish","Post Malone","Travis Scott","Kendrick Lamar","Bad Bunny","David Guetta","Calvin Harris","Imagine Dragons","Maroon 5","Metallica","U2","Arctic Monkeys","Gims","SCH","Ninho","Damso","Booba","Aya Nakamura","PNL","Orelsan","Shakira","Justin Bieber","Lady Gaga"];
+const TOP_WORLD = ["Gims","Ninho","SCH","Orelsan","Soprano","Damso","Booba","PNL","Aya Nakamura","Gazo","SDM","Leto","Naps","Lartiste","Aladdin","Jul","Tayc","Bigflo & Oli","Clara Luciani","Zaz","Indochine","Louane","Vianney","Fishbach","Pomme","Vitaa","MHD","Nekfeu","Black M","Kool Shen","Didi Bredo","Vald","Zoro","Albi","Wagram","Theodort","Line Renaud","Christophe","Etienne Daho","Francis Cabrel","Renaud","Jean-Jacques Goldman","Shaka Ponk","Air","Phoenix","Superbus","IAM","Trustar","Lorie","Fatal Bach","Doc Gyne","Sexy Sushi","Dayso","Loredana","Mylene Farmer","Julien Clerc","Didier Wampas","Pigalle","Noir Desir","Yodelice","Boulevard des airs","Les Cowboys Fringants","Garrix","Taylor Swift","Coldplay","Ed Sheeran","Drake","Rihanna","Bruno Mars","Adele","The Weeknd","Dua Lipa","Billie Eilish","Post Malone","Bad Bunny","David Guetta","Imagine Dragons","Maroon 5","Arctic Monkeys"];
 
 
 let topWorldCache = { data: null, time: 0 };
@@ -57,10 +65,10 @@ function postForm(url, params) {
     req.end();
   });
 }
-function get(url, accessToken) {
+function get(url, accessToken, timeoutMs) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
-    const options = { method: 'GET', headers: {}, timeout: TM_TIMEOUT };
+    const options = { method: 'GET', headers: {}, timeout: timeoutMs || TM_TIMEOUT };
     if (accessToken) options.headers.Authorization = 'Bearer ' + accessToken;
     const lib = u.protocol === 'https:' ? https : http;
     const req = lib.request(u, options, res => {
@@ -78,6 +86,13 @@ function get(url, accessToken) {
     req.on('error', reject);
     req.end();
   });
+}
+function withTimeout(promise, ms, label) {
+  let to;
+  return Promise.race([
+    promise.then(v => { clearTimeout(to); return v; }, e => { clearTimeout(to); throw e; }),
+    new Promise((_, rej) => { to = setTimeout(() => rej(new Error(label)), ms); })
+  ]);
 }
 function normalizeArtist(name) {
   return (name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
@@ -100,52 +115,76 @@ app.use((req, res, next) => {
   next();
 });
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+function cleanStates() {
+  const cut = Date.now() - 900000;
+  for (const k of Array.from(currentState.keys())) if (currentState.get(k) < cut) currentState.delete(k);
+}
+function authPage(title, msg, color) {
+  return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + title + '</title></head>' +
+    '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0f14,#1a1024);font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#fff;text-align:center;padding:24px">' +
+    '<div><div style="font-size:64px">' + (color === 'red' ? '&#9888;' : '&#9835;') + '</div><h1 style="font-size:22px;margin:12px 0">' + title + '</h1>' +
+    '<p style="opacity:.75;max-width:420px;line-height:1.5">' + msg + '</p>' +
+    '<a href="/login" style="display:inline-block;margin-top:20px;padding:13px 26px;border-radius:14px;background:linear-gradient(135deg,#ff8a2e,#ff6a00);color:#fff;text-decoration:none;font-weight:800">Se reconnecter</a></div></body></html>';
+}
 app.get('/login', (req, res) => {
+  cleanStates();
   const state = crypto.randomBytes(16).toString('hex');
   currentState.set(state, Date.now());
   const scope = 'playlist-read-private user-top-read user-read-recently-played';
   const params = new URLSearchParams({ response_type: 'code', client_id: SPOTIFY_CLIENT_ID, scope, redirect_uri: REDIRECT_URI, state, show_dialog: 'true' });
   res.redirect('https://accounts.spotify.com/authorize?' + params.toString());
 });
-app.get('/callback', async (req, res) => {
+app.get('/callback', wrap(async (req, res) => {
   const { code, state, error } = req.query;
-  if (error) { res.status(400).send('Login error: ' + error); return; }
-  if (!state || !currentState.has(state)) { res.status(400).send('State mismatch'); return; }
+  if (error) { res.status(400).send(authPage('Connexion annulee', 'Spotify a refuse la connexion (' + error + ').', 'red')); return; }
+  if (!state || !currentState.has(state)) { res.status(400).send(authPage('Session expiree', 'Le serveur a redemarre pendant la connexion. Reconnecte-toi, ca marche cette fois.', 'red')); return; }
   currentState.delete(state);
   try {
     const token = await postForm('https://accounts.spotify.com/api/token', { grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI, client_id: SPOTIFY_CLIENT_ID, client_secret: SPOTIFY_CLIENT_SECRET });
+    if (!token || !token.access_token) { res.status(500).send(authPage('Connexion echouee', 'Spotify n a pas renvoye de jeton. Reessaie.', 'red')); return; }
     const tokenId = crypto.randomBytes(24).toString('hex');
-    userSessions.set(tokenId, token.access_token);
-    res.cookie('ca_session', tokenId, { maxAge: 60 * 60 * 24 * 7 });
+    userSessions.set(tokenId, { token: token.access_token, at: Date.now() });
+    res.cookie('ca_session', tokenId, { maxAge: 60 * 60 * 24 * 7, path: '/', sameSite: 'lax' });
     res.redirect('/');
-  } catch (e) { res.status(500).send('Login failed: ' + e.message); }
-});
+  } catch (e) { res.status(500).send(authPage('Connexion echouee', String(e.message).slice(0, 160), 'red')); }
+}));
 app.get('/logout', (req, res) => {
   const id = req.cookies ? req.cookies.ca_session : null;
   if (id && userSessions.has(id)) userSessions.delete(id);
-  res.clearCookie('ca_session');
+  res.clearCookie('ca_session', { path: '/' });
   res.redirect('/');
 });
+app.get('/api/whoami', wrap(async (req, res) => {
+  const token = getToken(req);
+  if (!token) return res.json({ authenticated: false });
+  try {
+    const me = await get('https://api.spotify.com/v1/me', token);
+    return res.json({ authenticated: true, id: me.id, display_name: me.display_name, image: (me.images && me.images[0] && me.images[0].url) || '' });
+  } catch (e) { return res.json({ authenticated: false }); }
+}));
 function getToken(req) {
   const id = req.cookies ? req.cookies.ca_session : null;
   if (!id || !userSessions.has(id)) return null;
-  return userSessions.get(id);
+  const s = userSessions.get(id);
+  if (!s) return null;
+  if (Date.now() - s.at > 3600000) { userSessions.delete(id); return null; }
+  return s.token;
 }
-app.get('/api/me', async (req, res) => {
+app.get('/api/me', wrap(async (req, res) => {
   const token = getToken(req);
   if (!token) return res.json({ authenticated: false });
   try {
     const me = await get('https://api.spotify.com/v1/me', token);
     return res.json({ authenticated: true, id: me.id, display_name: me.display_name });
   } catch (e) { return res.json({ authenticated: false }); }
-});
+}));
 async function getTopArtists(token, limit) {
   try {
     const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', token);
     return (data.items || []).map(a => ({ name: a.name, popularity: a.popularity || null, genres: a.genres || [] }));
   } catch (e) { return []; }
 }
-app.get('/api/my-artists', async (req, res) => {
+app.get('/api/my-artists', wrap(async (req, res) => {
   const token = getToken(req);
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
@@ -162,7 +201,7 @@ app.get('/api/my-artists', async (req, res) => {
     }
     res.json({ artists: list, popMap, genreMap });
   } catch (e) { res.json({ artists: [], popMap: {}, genreMap: {} }); }
-});
+}));
 function mapTmEvent(e) {
   const at = (e._embedded && e._embedded.attractions && e._embedded.attractions[0]) || {};
   return {
@@ -185,7 +224,7 @@ async function findAttraction(name) {
   ];
   for (const u of tries) {
     try {
-      const data = await get(u);
+      const data = await get(u, null, u.indexOf('locale=fr-fr') > -1 ? TM_TIMEOUT : TM_TIMEOUT_SHORT);
       const list = (data._embedded && data._embedded.attractions) || [];
       for (const a of list) {
         if (normalizeArtist(a.name) === target) {
@@ -257,7 +296,7 @@ async function findTicketmasterExact(name) {
   });
   return matched;
 }
-app.post('/api/multi-artist', async (req, res) => {
+app.post('/api/multi-artist', wrap(async (req, res) => {
   const { artists } = req.body;
   if (!artists || !Array.isArray(artists)) return res.status(400).json({ error: 'Invalid body' });
   const out = [];
@@ -273,14 +312,14 @@ app.post('/api/multi-artist', async (req, res) => {
       const m = await findTicketmasterExact(star);
       if (m.length) {
         const concerts = m.slice(0, 5).map(c => ({ venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }));
-        out.push({ name: star + ' ⭐', popularity: null, genre: m[0].genre || '', concert: concerts[0], concerts, fallback: true });
+        out.push({ name: star + ' [favori]', popularity: null, genre: m[0].genre || '', concert: concerts[0], concerts, fallback: true });
       }
       if (out.filter(o => o.concert).length >= 6) break;
     }
   }
   res.json(out);
-});
-app.get('/api/top-world', async (req, res) => {
+}));
+app.get('/api/top-world', wrap(async (req, res) => {
   const now = Date.now();
   if (topWorldCache.data && (now - topWorldCache.time) < 3600000) return res.json(topWorldCache.data);
   const out = [];
@@ -303,7 +342,7 @@ app.get('/api/top-world', async (req, res) => {
   });
   topWorldCache = { data: out, time: now };
   res.json(out);
-});
+}));
 
 /* ==========================================================
    AGENT 4 : DECOUVERTE PAR GENRE (LLM Gemini)
@@ -419,33 +458,42 @@ function frDate(iso) {
 }
 async function buildProfile(token, limit) {
   const top = await getTopArtists(token, 20);
-  const profile = [];
-  for (const a of top.slice(0, limit)) {
-    profile.push({
-      name: a.name,
-      popularity: a.popularity,
-      spotifyGenres: (a.genres || []).slice(0, 2),
-      tmGenre: await getAttractionGenre(a.name, null)
-    });
-  }
-  return profile;
+  const list = top.slice(0, limit).map(a => ({
+    name: a.name,
+    popularity: a.popularity,
+    spotifyGenres: (a.genres || []).slice(0, 2),
+    tmGenre: ''
+  }));
+  try {
+    await withTimeout(
+      Promise.all(list.map(p => getAttractionGenre(p.name, null).then(g => { p.tmGenre = g; }).catch(() => {}))),
+      PROFILE_BUDGET,
+      'timeout genres'
+    );
+  } catch (e) {}
+  return list;
 }
-app.get('/api/profile', async (req, res) => {
+app.get('/api/profile', wrap(async (req, res) => {
   const token = getToken(req);
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
     const profile = await buildProfile(token, 12);
     res.json({ profile, hasKey: !!GEMINI_KEY, model: GEMINI_MODEL });
   } catch (e) { res.status(500).json({ error: 'Impossible de lire ton profil' }); }
-});
-app.post('/api/discover', async (req, res) => {
+}));
+app.post('/api/discover', wrap(async (req, res) => {
   const { region, homeCity } = req.body || {};
-  if (!GEMINI_KEY) return res.status(503).json({ error: 'GEMINI_API_KEY manquant dans Render' });
+  let answered = false;
+  const reply = (code, obj) => { if (!answered) { answered = true; res.status(code).json(obj); } };
+  const bail = setTimeout(() => reply(504, { error: 'Le serveur met trop de temps, reessaie dans 1 minute' }), HANDLER_BUDGET);
+
+  if (!GEMINI_KEY) { clearTimeout(bail); return reply(503, { error: 'GEMINI_API_KEY manquant dans Render' }); }
   const token = getToken(req);
-  if (!token) return res.status(401).json({ error: 'Connecte-toi a Spotify d abord' });
+  if (!token) { clearTimeout(bail); return reply(401, { error: 'Connecte-toi a Spotify d abord' }); }
+
   let profile = [];
   try { profile = await buildProfile(token, 12); } catch (e) {}
-  if (!profile.length) return res.status(400).json({ error: 'Impossible de lire ton profil Spotify' });
+  if (!profile.length) { clearTimeout(bail); return reply(400, { error: 'Impossible de lire ton profil Spotify' }); }
 
   const profKey = profile.map(p => normalizeArtist(p.name)).sort().join('|');
   const now = Date.now();
@@ -454,12 +502,12 @@ app.post('/api/discover', async (req, res) => {
     pool = discoverCache.data;
   } else {
     const profSet = new Set(profKey.split('|'));
-    const candidates = TOP_WORLD.filter(s => !profSet.has(normalizeArtist(s))).slice(0, 26);
+    const candidates = TOP_WORLD.filter(s => !profSet.has(normalizeArtist(s))).slice(0, 24);
     pool = [];
-    const CHUNK = 8;
-    const deadline = Date.now() + 55000;
+    const CHUNK = 12;
+    const deadline = Date.now() + POOL_BUDGET;
     for (let i = 0; i < candidates.length; i += CHUNK) {
-      if (Date.now() > deadline || pool.length >= 40) break;
+      if (Date.now() > deadline || pool.length >= 36) break;
       const slice = candidates.slice(i, i + CHUNK);
       const got = await Promise.all(slice.map(async c => {
         try {
@@ -474,7 +522,7 @@ app.post('/api/discover', async (req, res) => {
     discoverCache = { key: profKey, data: pool, time: now };
   }
 
-  if (!pool.length) return res.status(503).json({ error: 'Aucun artiste en concert en France pour le moment, reessaie dans 1h' });
+  if (!pool.length) { clearTimeout(bail); return reply(503, { error: 'Aucun artiste en concert en France pour le moment, reessaie dans 1h' }); }
 
   const lines = [];
   lines.push('Artistes ecoutes par une personne (Spotify) :');
@@ -494,25 +542,38 @@ app.post('/api/discover', async (req, res) => {
   lines.push('Score de 0 a 10 = probabilite que la personne y aille.');
   lines.push('Reponds UNIQUEMENT en JSON : {"suggestions":[{"name":"","score":8,"why":"1 phrase","dates":[""],"near":true}]}');
 
-  try {
-    const out = await gemini(lines.join('\n'));
-    const valid = new Set(pool.map(p => normalizeArtist(p.name)));
-    const sugg = (out && out.suggestions ? out.suggestions : [])
-      .filter(s => s && valid.has(normalizeArtist(s.name)))
-      .slice(0, 5)
-      .map(s => ({
-        name: s.name,
-        score: Math.max(0, Math.min(10, Number(s.score) || 0)),
-        why: String(s.why || '').slice(0, 220),
-        dates: (s.dates || []).map(String).slice(0, 3),
-        near: !!s.near
-      }));
-    if (!sugg.length) return res.status(502).json({ error: 'Le LLM a propose des artistes introuvables, reessaie' });
-    res.json({ suggestions: sugg, poolSize: pool.length, hasKey: true, model: GEMINI_MODEL });
-  } catch (e) {
-    res.status(502).json({ error: 'LLM indisponible : ' + e.message });
+  let out = null;
+  let llmError = '';
+  try { out = await gemini(lines.join('\n')); }
+  catch (e) { llmError = e.message; }
+
+  const valid = new Set(pool.map(p => normalizeArtist(p.name)));
+  const sugg = (out && out.suggestions ? out.suggestions : [])
+    .filter(s => s && valid.has(normalizeArtist(s.name)))
+    .slice(0, 5)
+    .map(s => ({
+      name: s.name,
+      score: Math.max(0, Math.min(10, Number(s.score) || 0)),
+      why: String(s.why || '').slice(0, 220),
+      dates: (s.dates || []).map(String).slice(0, 3),
+      near: !!s.near
+    }));
+
+  if (!sugg.length) {
+    const wanted = normalizeArtist(homeCity);
+    const fallback = pool.slice(0, 5).map(p => ({
+      name: p.name,
+      score: p.dates.length >= 3 ? 8 : 6,
+      why: (p.genre ? 'Genre ' + p.genre + '. ' : '') + p.dates.length + ' date(s) en France.',
+      dates: p.dates.slice(0, 3),
+      near: wanted ? normalizeArtist(p.dates.join(' ')).indexOf(wanted) > -1 : false
+    }));
+    clearTimeout(bail);
+    return reply(200, { suggestions: fallback, poolSize: pool.length, hasKey: true, model: llmError ? 'sans-ia' : GEMINI_MODEL, note: llmError ? 'IA indisponible, resultats bruts : ' + llmError : '' });
   }
-});
+  clearTimeout(bail);
+  reply(200, { suggestions: sugg, poolSize: pool.length, hasKey: true, model: GEMINI_MODEL });
+}));
 app.listen(PORT, () => {
   console.log('Concert Alert running on port ' + PORT);
   console.log('Ticketmaster key set: ' + !!TICKETMASTER_KEY);
