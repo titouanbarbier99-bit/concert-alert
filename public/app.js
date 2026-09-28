@@ -279,7 +279,8 @@ function concertCard(name, concert) {
   const date = formatDate(concert.date);
   const monthHtml = date ? `<div class="concert-date-box"><div class="day">${date.day}</div><div class="month">${date.month}</div><div class="year">${date.year}</div></div>` : '<div class="concert-date-box"><div class="day">?</div></div>';
   const c = { name, venue: concert.venue, city: concert.city, country: concert.country, date: concert.date, url: concert.url };
-  const isNew = typeof markSeen === 'function' ? markSeen(c) : false;
+  let isNew = false;
+  if (typeof window.leetMarkSeen === 'function') isNew = window.leetMarkSeen(c);
   return `<div class="concert-card">${monthHtml}<div class="concert-info"><div class="concert-venue">${concert.venue}</div><div class="concert-location">${concert.city}${concert.country ? ', ' + concert.country : ''}</div><div class="concert-tags"><span class="concert-tag source">${concert.source}</span>${isNew ? '<span class="concert-tag" style="background:linear-gradient(135deg,#ff8a2e,#ff6a00);color:#fff;border:0">✨ Nouveau</span>' : ''}${concert.country === 'FR' ? '<span class="concert-tag">🇫🇷 France</span>' : ''}</div></div><div class="concert-actions">${favButton(c)}${concert.url ? `<a class="btn-ticket" href="${concert.url}" target="_blank" rel="noopener">🎫 Billets</a>` : ''}</div></div>`;
 }
 function renderTopWorld(list) {
@@ -386,16 +387,13 @@ function filterConcerts(value) {
   var KEY = 'leet_seen';
   var snapshot = {};
   try { snapshot = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { snapshot = {}; }
+  if (!window._a2new) window._a2new = new Set();
 
-  window.getNewCount = function () {
-    return window._a2new ? window._a2new.size : 0;
-  };
-
-  window.markSeen = function (c) {
+  window.leetMarkSeen = function (c) {
     try {
       var k = (c.name || '') + '|' + (c.venue || '') + '|' + (c.date || '');
       var isNew = !snapshot[k];
-      if (isNew) { if (!window._a2new) window._a2new = new Set(); window._a2new.add(k); }
+      if (isNew) window._a2new.add(k);
       var store = {};
       try { store = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e2) { store = {}; }
       store[k] = Date.now();
@@ -403,7 +401,7 @@ function filterConcerts(value) {
       clearTimeout(window.__a2t);
       window.__a2t = setTimeout(function () {
         try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e3) {}
-      }, 600);
+      }, 800);
       return isNew;
     } catch (e) { return false; }
   };
@@ -411,9 +409,8 @@ function filterConcerts(value) {
   function renderBanner() {
     var host = document.getElementById('concerts-container');
     if (!host) return;
-    var old = document.getElementById('a2-banner');
-    if (old) old.remove();
-    var n = window.getNewCount();
+    if (document.getElementById('a2-banner')) return;
+    var n = window._a2new.size;
     if (!n) return;
     var box = document.createElement('div');
     box.id = 'a2-banner';
@@ -422,11 +419,11 @@ function filterConcerts(value) {
     host.insertBefore(box, host.firstChild);
   }
 
-  new MutationObserver(function () { renderBanner(); }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(renderBanner).observe(document.body, { childList: true, subtree: true });
 })();
 
 /* ==========================================================
-   AGENT 1 : CALENDRIER (.ics) — tous les favoris ou un par un
+   AGENT 1 : CALENDRIER (.ics)
    ========================================================== */
 (function () {
   if (window.__agent1) return;
@@ -492,19 +489,16 @@ function filterConcerts(value) {
 
   function ensureButtons() {
     var list = document.getElementById('favs-list');
-    if (!list) return;
-    var favs = getFavs();
-
+    if (!list || !list.parentNode) return;
     if (!document.getElementById('a1-all')) {
       var b = document.createElement('button');
       b.id = 'a1-all';
       b.type = 'button';
       b.textContent = '📅 Tout ajouter à mon agenda';
-      b.style.cssText = 'display:block;width:calc(100% - 28px);margin:0 14px 12px;padding:12px;border-radius:16px;border:1px solid rgba(255,138,46,.45);background:linear-gradient(135deg,rgba(255,138,46,.2),rgba(255,255,255,.75));font-weight:800;font-size:13px;cursor:pointer;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)';
+      b.style.cssText = 'display:block;width:calc(100% - 28px);margin:12px 14px;padding:12px;border-radius:16px;border:1px solid rgba(255,138,46,.45);background:linear-gradient(135deg,rgba(255,138,46,.2),rgba(255,255,255,.75));font-weight:800;font-size:13px;cursor:pointer;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)';
       b.onclick = function () { window.leetExportAll(); };
       list.parentNode.insertBefore(b, list);
     }
-
     Array.prototype.forEach.call(list.querySelectorAll('.fav-item'), function (item) {
       if (item.classList.contains('fav-soon')) return;
       if (item.querySelector('.a1-one')) return;
@@ -522,12 +516,11 @@ function filterConcerts(value) {
     });
   }
 
-  new MutationObserver(function () { ensureButtons(); }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(ensureButtons).observe(document.body, { childList: true, subtree: true });
 })();
 
 /* ==========================================================
-   AGENT 3 : WEEKEND INTELLIGENT  (100% local, sans serveur)
-   Coller plusieurs fois = sans risque
+   AGENT 3 : WEEKEND INTELLIGENT
    ========================================================== */
 (function () {
   if (window.__agent3) return;
@@ -539,7 +532,6 @@ function filterConcerts(value) {
     GES: "Grand Est", PDL: "Pays de la Loire", BRE: "Bretagne", NOR: "Normandie",
     BFC: "Bourgogne-Franche-Comté", CVL: "Centre-Val de Loire", COR: "Corse"
   };
-
   var A3_FALLBACK = {
     "paris": "IDF", "lyon": "ARA", "grenoble": "ARA", "saint-etienne": "ARA",
     "clermont-ferrand": "ARA", "annecy": "ARA", "villeurbanne": "ARA",
@@ -555,20 +547,14 @@ function filterConcerts(value) {
     "orleans": "CVL", "tours": "CVL",
     "ajaccio": "COR", "bastia": "COR"
   };
-
-  function a3Key(s) {
-    return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  }
+  function a3Key(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
   function a3City(f) {
     if (!f) return "";
     if (f.city) return f.city;
     if (f.venue && f.venue.city) return f.venue.city;
     return "";
   }
-  function a3Date(f) {
-    if (!f) return "";
-    return String(f.date || "").slice(0, 10);
-  }
+  function a3Date(f) { return f ? String(f.date || "").slice(0, 10) : ""; }
   function a3Region(city) {
     var c = a3Key(city).trim();
     if (typeof cityToRegion === "function") {
@@ -577,9 +563,7 @@ function filterConcerts(value) {
     }
     return A3_FALLBACK[c] || null;
   }
-  function a3RegionName(code) {
-    return A3_NAMES[code] || code;
-  }
+  function a3RegionName(code) { return A3_NAMES[code] || code; }
   function a3Saturday(dateStr) {
     var d = new Date(String(dateStr) + "T12:00:00");
     if (isNaN(d.getTime())) return null;
@@ -590,9 +574,7 @@ function filterConcerts(value) {
   function renderWeekendAgent() {
     var host = document.getElementById("favs-list");
     if (!host) return;
-    var old = document.getElementById("weekend-agent");
-    if (old) old.remove();
-
+    if (document.getElementById("weekend-agent")) return;
     var favs = [];
     try { favs = JSON.parse(localStorage.getItem("leet_favs") || "[]"); } catch (e) { return; }
     if (!Array.isArray(favs) || favs.length < 2) return;
@@ -606,7 +588,6 @@ function filterConcerts(value) {
       if (!groups[k]) groups[k] = [];
       groups[k].push(f);
     });
-
     var alerts = Object.keys(groups).map(function (k) { return groups[k]; }).filter(function (g) {
       var cities = {};
       g.forEach(function (x) { cities[a3Key(a3City(x))] = 1; });
@@ -618,11 +599,9 @@ function filterConcerts(value) {
       var d = new Date(s + "T12:00:00");
       return isNaN(d.getTime()) ? s : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
     };
-
     var box = document.createElement("div");
     box.id = "weekend-agent";
     box.style.cssText = "margin:0 0 12px;padding:14px;border-radius:18px;background:linear-gradient(135deg,rgba(255,138,46,.16),rgba(255,255,255,.7));border:1px solid rgba(255,138,46,.4);box-shadow:0 8px 24px rgba(255,138,46,.15);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)";
-
     var html = '<div style="font-weight:800;font-size:13px;display:flex;align-items:center;gap:7px">📅 Agent Weekend</div>';
     alerts.forEach(function (g) {
       var cities = [];
@@ -638,8 +617,5 @@ function filterConcerts(value) {
     host.insertBefore(box, host.firstChild);
   }
 
-  new MutationObserver(function () {
-    if (document.getElementById("weekend-agent")) return;
-    renderWeekendAgent();
-  }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(renderWeekendAgent).observe(document.body, { childList: true, subtree: true });
 })();
