@@ -298,7 +298,7 @@ app.get('/api/top-world', async (req, res) => {
   out.sort((a, b) => {
     const aFR = a.concert.country === 'FR' ? 0 : 1;
     const bFR = b.concert.country === 'FR' ? 0 : 1;
-    if (aFR !== bFR) return aFR - bFB;
+    if (aFR !== bFR) return aFR - bFR;
     return new Date(a.concert.date) - new Date(b.concert.date);
   });
   topWorldCache = { data: out, time: now };
