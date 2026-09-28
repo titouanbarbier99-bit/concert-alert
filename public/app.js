@@ -50,7 +50,7 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 function logout() { window.location.href = '/logout'; }
-function changeAccount() { fetch('/logout').then(() => { window.location.href = '/login'; }); }
+function changeAccount() { try { localStorage.clear(); } catch (e) {} window.location.href = '/logout'; }
 function toggleFavs(open) {
   document.getElementById('favs-drawer').classList.toggle('open', open);
   document.getElementById('favs-overlay').classList.toggle('open', open);
