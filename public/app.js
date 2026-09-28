@@ -332,3 +332,110 @@ function filterConcerts(value) {
     } else { showScreen('screen-login'); }
   } catch (e) { showScreen('screen-login'); }
 })();
+/* ==========================================================
+   AGENT 3 : WEEKEND INTELLIGENT  (100% local, sans serveur)
+   Détecte 2 concerts dans la même région le même week-end
+   ========================================================== */
+const A3_FALLBACK = {
+  paris:"Île-de-France", lyon:"Auvergne-Rhône-Alpes", marseille:"Provence-Alpes-Côte d'Azur",
+  lille:"Hauts-de-France", bordeaux:"Nouvelle-Aquitaine", toulouse:"Occitanie",
+  nantes:"Pays de la Loire", strasbourg:"Grand Est", montpellier:"Occitanie",
+  rennes:"Bretagne", nice:"Provence-Alpes-Côte d'Azur", grenoble:"Auvergne-Rhône-Alpes",
+  rouen:"Normandie", "le havre":"Normandie", caen:"Normandie", brest:"Bretagne",
+  reims:"Grand Est", nancy:"Grand Est", metz:"Grand Est", dijon:"Bourgogne-Franche-Comté",
+  besancon:"Bourgogne-Franche-Comté", "saint-etienne":"Auvergne-Rhône-Alpes", angers:"Pays de la Loire",
+  "le mans":"Pays de la Loire", tours:"Centre-Val de Loire", orleans:"Centre-Val de Loire",
+  "clermont-ferrand":"Auvergne-Rhône-Alpes", annecy:"Auvergne-Rhône-Alpes", avignon:"Provence-Alpes-Côte d'Azur",
+  nimes:"Occitanie", limoges:"Nouvelle-Aquitaine", poitiers:"Nouvelle-Aquitaine",
+  toulon:"Provence-Alpes-Côte d'Azur", amiens:"Hauts-de-France", calais:"Hauts-de-France",
+  brest:"Bretagne", lorient:"Bretagne", nantes:"Pays de la Loire", la rochelle:"Nouvelle-Aquitaine"
+};
+
+function a3Key(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+
+function a3City(f){
+  if (!f) return "";
+  if (f.city) return f.city;
+  if (f.venue && f.venue.city) return f.venue.city;
+  if (f._venue && f._venue.city) return f._venue.city;
+  return "";
+}
+function a3Date(f){
+  if (!f) return "";
+  return String(f.date || f.localDate || f.startDate || f.dateTime || "").slice(0,10);
+}
+
+function a3Region(city){
+  const c = a3Key(city).trim();
+  if (typeof CITY_TO_REGION !== "undefined" && CITY_TO_REGION) {
+    if (CITY_TO_REGION[city]) return CITY_TO_REGION[city];
+    for (const k in CITY_TO_REGION) { if (a3Key(k) === c) return CITY_TO_REGION[k]; }
+  }
+  return A3_FALLBACK[c] || null;
+}
+
+function a3Saturday(dateStr){
+  const d = new Date(String(dateStr) + "T12:00:00");
+  if (isNaN(d.getTime())) return null;
+  const wd = d.getDay();
+  d.setDate(d.getDate() + (6 - wd));
+  const p = n => String(n).padStart(2,"0");
+  return d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate());
+}
+
+function renderWeekendAgent(){
+  const host = document.getElementById("favs-list") || document.getElementById("favs-screen");
+  if (!host) return;
+  const old = document.getElementById("weekend-agent");
+  if (old) old.remove();
+
+  let favs = [];
+  try { favs = JSON.parse(localStorage.getItem("leet_favs") || "[]"); } catch(e){ return; }
+  if (!Array.isArray(favs) || favs.length < 2) return;
+
+  const groups = {};
+  favs.forEach(f => {
+    const region = a3Region(a3City(f));
+    const sat = a3Saturday(a3Date(f));
+    if (!region || !sat) return;
+    const k = region + "||" + sat;
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(f);
+  });
+
+  const alerts = Object.keys(groups).map(k => groups[k]).filter(g =>
+    g.length >= 2 && new Set(g.map(x => a3Key(a3City(x)))).size >= 2
+  );
+  if (!alerts.length) return;
+
+  const fmt = s => { const d = new Date(s + "T12:00:00"); return isNaN(d.getTime()) ? s : d.toLocaleDateString("fr-FR",{day:"numeric",month:"long"}); };
+
+  const box = document.createElement("div");
+  box.id = "weekend-agent";
+  box.style.cssText = "margin:0 14px 12px;padding:14px;border-radius:18px;background:linear-gradient(135deg,rgba(255,138,46,.16),rgba(255,255,255,.7));border:1px solid rgba(255,138,46,.4);box-shadow:0 8px 24px rgba(255,138,46,.15);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)";
+
+  let html = '<div style="font-weight:800;font-size:13px;display:flex;align-items:center;gap:7px">📅 Agent Weekend</div>';
+  alerts.forEach(g => {
+    const cities = [];
+    g.forEach(x => { const c = a3City(x); if (c && cities.indexOf(c) < 0) cities.push(c); });
+    const dates = g.map(a3Date).filter(Boolean).sort();
+    dates.forEach(d => { if (dates.indexOf(d) < 0) dates.push(d); });
+    const uniq = Array.from(new Set(dates)).sort();
+    html += '<div style="margin-top:9px;font-size:13px;line-height:1.5">'
+      + '<b>Weekend du ' + fmt(uniq[0]) + '</b> · ' + a3Region(a3City(g[0])) + '<br>'
+      + cities.length + ' concerts / ' + cities.length + ' villes : ' + cities.join(" → ")
+      + '<br><span style="opacity:.72;font-size:12px">Trajet probable : ' + cities[0] + ' → ' + cities[cities.length-1] + '</span>'
+      + '</div>';
+  });
+  box.innerHTML = html;
+  host.insertBefore(box, host.firstChild);
+}
+
+/* Auto-refresh quand le tiroir se remplit (aucune modif de ton code) */
+if (!window.__a3) {
+  window.__a3 = true;
+  new MutationObserver(() => {
+    if (document.getElementById("weekend-agent")) return;
+    renderWeekendAgent();
+  }).observe(document.body, { childList:true, subtree:true });
+}
