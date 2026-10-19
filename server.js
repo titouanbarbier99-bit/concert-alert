@@ -205,6 +205,7 @@ app.get('/api/me', wrap(async (req, res) => {
   const p = await sessionProfile(s);
   return res.json({ authenticated: true, id: p.id, display_name: p.display_name, image: p.image });
 }));
+async function getTopArtists(token, limit) {
   try {
     const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', token);
     return (data.items || []).map(a => ({ name: a.name, popularity: a.popularity || null, genres: a.genres || [] }));
