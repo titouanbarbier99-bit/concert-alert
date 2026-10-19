@@ -211,22 +211,84 @@ async function getTopArtists(token, limit) {
     return (data.items || []).map(a => ({ name: a.name, popularity: a.popularity || null, genres: a.genres || [] }));
   } catch (e) { return []; }
 }
-app.get('/api/my-artists', wrap(async (req, res) => {
-  const token = getToken(req);
-  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+async function getRecentlyPlayedArtists(token) {
   try {
-    const top = await getTopArtists(token, 50);
-    const list = [];
-    const seen = new Set();
-    const popMap = {};
-    const genreMap = {};
-    for (const a of top) {
-      const key = normalizeArtist(a.name);
-      if (!seen.has(key)) { seen.add(key); list.push(a.name); }
-      if (a.popularity != null) popMap[a.name] = a.popularity;
-      if (a.genres && a.genres.length) genreMap[a.name] = a.genres.slice(0, 3);
+    const data = await get('https://api.spotify.com/v1/me/player/recently-played?limit=50', token, 7000);
+    const out = [];
+    for (const it of (data.items || [])) {
+      const t = it && it.track;
+      if (!t) continue;
+      for (const a of (t.artists || [])) if (a && a.name) out.push({ name: a.name, popularity: null, genres: [] });
     }
-    res.json({ artists: list, popMap, genreMap });
+    return out;
+  } catch (e) { return []; }
+}
+async function playlistTracks(token, id) {
+  const urls = [
+    'https://api.spotify.com/v1/playlists/' + id + '/tracks?limit=100',
+    'https://api.spotify.com/v1/playlists/' + id + '/items?limit=100'
+  ];
+  for (const u of urls) {
+    try {
+      const d = await get(u, token, 7000);
+      if (d) return d.items || (d.tracks && d.tracks.items) || [];
+    } catch (e) {}
+  }
+  return [];
+}
+async function getPlaylistArtists(token, maxPlaylists) {
+  let playlists = [];
+  try {
+    const data = await get('https://api.spotify.com/v1/me/playlists?limit=50', token, 7000);
+    playlists = (data.items || []).filter(p => p && p.id);
+  } catch (e) { return []; }
+  const chosen = playlists.slice(0, maxPlaylists || 12);
+  const lists = await Promise.all(chosen.map(p => playlistTracks(token, p.id)));
+  const out = [];
+  for (const items of lists) {
+    for (const it of (items || [])) {
+      const t = it && (it.track || it.item);
+      if (!t) continue;
+      for (const a of (t.artists || [])) if (a && a.name) out.push({ name: a.name, popularity: null, genres: [] });
+    }
+  }
+  return out;
+}
+function mergeArtistLists(lists, cap) {
+  const artists = [];
+  const popMap = {};
+  const genreMap = {};
+  const seen = new Set();
+  const max = cap || 90;
+  for (const list of lists) {
+    for (const a of (list || [])) {
+      if (!a || !a.name) continue;
+      const k = normalizeArtist(a.name);
+      if (!k) continue;
+      if (!seen.has(k)) {
+        seen.add(k);
+        artists.push(a.name);
+        if (artists.length >= max) return { artists, popMap, genreMap };
+      }
+      if (a.popularity != null && !popMap[a.name]) popMap[a.name] = a.popularity;
+      if (a.genres && a.genres.length && !genreMap[a.name]) genreMap[a.name] = a.genres.slice(0, 3);
+    }
+  }
+  return { artists, popMap, genreMap };
+}
+app.get('/api/my-artists', wrap(async (req, res) => {
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    if (s.artistCache && Date.now() - s.artistCache.at < 300000) return res.json(s.artistCache.data);
+    const results = await Promise.all([
+      getTopArtists(s.token, 50),
+      getRecentlyPlayedArtists(s.token),
+      getPlaylistArtists(s.token, 12)
+    ]);
+    const data = mergeArtistLists(results, 90);
+    s.artistCache = { data, at: Date.now() };
+    res.json(data);
   } catch (e) { res.json({ artists: [], popMap: {}, genreMap: {} }); }
 }));
 function mapTmEvent(e) {
@@ -326,13 +388,27 @@ async function findTicketmasterExact(name) {
 app.post('/api/multi-artist', wrap(async (req, res) => {
   const { artists } = req.body;
   if (!artists || !Array.isArray(artists)) return res.status(400).json({ error: 'Invalid body' });
-  const out = [];
-  for (const name of artists) {
-    const matched = await findTicketmasterExact(name);
-    if (!matched.length) { out.push({ name, popularity: null, genre: '', concert: null, concerts: [] }); continue; }
-    const concerts = matched.slice(0, 20).map(c => ({ venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }));
-    out.push({ name, popularity: null, genre: matched[0].genre || '', concert: concerts[0], concerts });
-  }
+  const list = artists.slice(0, 90);
+  const results = new Array(list.length);
+  const deadline = Date.now() + 50000;
+  let cursor = 0;
+  const worker = async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= list.length || Date.now() > deadline) return;
+      const name = list[i];
+      try {
+        const matched = await findTicketmasterExact(name);
+        if (!matched.length) { results[i] = { name, popularity: null, genre: '', concert: null, concerts: [] }; continue; }
+        const concerts = matched.slice(0, 20).map(c => ({ venue: c.venue, city: c.city, country: c.country, date: c.date, capacity: null, source: c.source, url: c.url }));
+        results[i] = { name, popularity: null, genre: matched[0].genre || '', concert: concerts[0], concerts };
+      } catch (e) {
+        results[i] = { name, popularity: null, genre: '', concert: null, concerts: [] };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, () => worker()));
+  const out = results.filter(Boolean);
   const found = out.filter(o => o.concert).length;
   if (found === 0) {
     for (const star of FAMOUS_FALLBACK) {
