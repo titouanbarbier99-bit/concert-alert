@@ -126,10 +126,22 @@ function authPage(title, msg, color) {
     '<p style="opacity:.75;max-width:420px;line-height:1.5">' + msg + '</p>' +
     '<a href="/login" style="display:inline-block;margin-top:20px;padding:13px 26px;border-radius:14px;background:linear-gradient(135deg,#ff8a2e,#ff6a00);color:#fff;text-decoration:none;font-weight:800">Se reconnecter</a></div></body></html>';
 }
+function signState(v) {
+  return crypto.createHmac('sha256', SPOTIFY_CLIENT_SECRET || 'concert-alert').update(v).digest('hex').slice(0, 32);
+}
+function makeState() {
+  const v = crypto.randomBytes(16).toString('hex');
+  return v + '.' + signState(v);
+}
+function validState(s) {
+  if (!s || String(s).indexOf('.') < 0) return false;
+  const v = String(s).split('.')[0];
+  const sig = String(s).split('.').slice(1).join('.');
+  return sig === signState(v);
+}
 app.get('/login', (req, res) => {
   cleanStates();
-  const state = crypto.randomBytes(16).toString('hex');
-  currentState.set(state, Date.now());
+  const state = makeState();
   const scope = 'playlist-read-private user-top-read user-read-recently-played';
   const params = new URLSearchParams({ response_type: 'code', client_id: SPOTIFY_CLIENT_ID, scope, redirect_uri: REDIRECT_URI, state, show_dialog: 'true' });
   res.redirect('https://accounts.spotify.com/authorize?' + params.toString());
@@ -137,14 +149,16 @@ app.get('/login', (req, res) => {
 app.get('/callback', wrap(async (req, res) => {
   const { code, state, error } = req.query;
   if (error) { res.status(400).send(authPage('Connexion annulee', 'Spotify a refuse la connexion (' + error + ').', 'red')); return; }
-  if (!state || !currentState.has(state)) { res.status(400).send(authPage('Session expiree', 'Le serveur a redemarre pendant la connexion. Reconnecte-toi, ca marche cette fois.', 'red')); return; }
+  if (!validState(state)) { res.status(400).send(authPage('Connexion invalide', 'Relance la connexion depuis la page d accueil.', 'red')); return; }
   currentState.delete(state);
   try {
     const token = await postForm('https://accounts.spotify.com/api/token', { grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI, client_id: SPOTIFY_CLIENT_ID, client_secret: SPOTIFY_CLIENT_SECRET });
     if (!token || !token.access_token) { res.status(500).send(authPage('Connexion echouee', 'Spotify n a pas renvoye de jeton. Reessaie.', 'red')); return; }
     const tokenId = crypto.randomBytes(24).toString('hex');
-    userSessions.set(tokenId, { token: token.access_token, at: Date.now() });
+    const session = { token: token.access_token, at: Date.now() };
+    userSessions.set(tokenId, session);
     res.cookie('ca_session', tokenId, { maxAge: 60 * 60 * 24 * 7, path: '/', sameSite: 'lax' });
+    sessionProfile(session).catch(() => {});
     res.redirect('/');
   } catch (e) { res.status(500).send(authPage('Connexion echouee', String(e.message).slice(0, 160), 'red')); }
 }));
@@ -154,31 +168,43 @@ app.get('/logout', (req, res) => {
   res.clearCookie('ca_session', { path: '/' });
   res.redirect('/');
 });
-app.get('/api/whoami', wrap(async (req, res) => {
-  const token = getToken(req);
-  if (!token) return res.json({ authenticated: false });
-  try {
-    const me = await get('https://api.spotify.com/v1/me', token);
-    return res.json({ authenticated: true, id: me.id, display_name: me.display_name, image: (me.images && me.images[0] && me.images[0].url) || '' });
-  } catch (e) { return res.json({ authenticated: false }); }
-}));
-function getToken(req) {
+function getSession(req) {
   const id = req.cookies ? req.cookies.ca_session : null;
   if (!id || !userSessions.has(id)) return null;
   const s = userSessions.get(id);
   if (!s) return null;
   if (Date.now() - s.at > 3600000) { userSessions.delete(id); return null; }
-  return s.token;
+  s.at = Date.now();
+  return s;
 }
-app.get('/api/me', wrap(async (req, res) => {
-  const token = getToken(req);
-  if (!token) return res.json({ authenticated: false });
+function getToken(req) {
+  const s = getSession(req);
+  return s ? s.token : null;
+}
+async function sessionProfile(s) {
+  if (s.name) return { id: s.id || '', display_name: s.name, image: s.image || '' };
   try {
-    const me = await get('https://api.spotify.com/v1/me', token);
-    return res.json({ authenticated: true, id: me.id, display_name: me.display_name });
-  } catch (e) { return res.json({ authenticated: false }); }
+    const me = await withTimeout(get('https://api.spotify.com/v1/me', s.token, 6000), 7000, 'timeout profil');
+    s.id = me.id;
+    s.name = me.display_name || me.id;
+    s.image = (me.images && me.images[0] && me.images[0].url) || '';
+    return { id: s.id, display_name: s.name, image: s.image };
+  } catch (e) {
+    return { id: '', display_name: 'Compte connecte', image: '' };
+  }
+}
+app.get('/api/whoami', wrap(async (req, res) => {
+  const s = getSession(req);
+  if (!s) return res.json({ authenticated: false });
+  const p = await sessionProfile(s);
+  return res.json({ authenticated: true, id: p.id, display_name: p.display_name, image: p.image });
 }));
-async function getTopArtists(token, limit) {
+app.get('/api/me', wrap(async (req, res) => {
+  const s = getSession(req);
+  if (!s) return res.json({ authenticated: false });
+  const p = await sessionProfile(s);
+  return res.json({ authenticated: true, id: p.id, display_name: p.display_name, image: p.image });
+}));
   try {
     const data = await get('https://api.spotify.com/v1/me/top/artists?limit=' + limit + '&time_range=medium_term', token);
     return (data.items || []).map(a => ({ name: a.name, popularity: a.popularity || null, genres: a.genres || [] }));
