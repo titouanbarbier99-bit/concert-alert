@@ -362,6 +362,15 @@ function filterConcerts(value) {
     const me = await fetch('/api/me');
     const m = await me.json();
     if (m.authenticated) {
+      const userName = m.display_name && m.display_name !== 'Compte connecte' ? m.display_name : '';
+      if (userName) {
+        document.querySelectorAll('.topbar-left').forEach(function (box) {
+          const el = document.createElement('span');
+          el.style.cssText = 'margin-left:10px;font-weight:800;font-size:14px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45vw';
+          el.textContent = 'Bienvenue ' + userName;
+          box.appendChild(el);
+        });
+      }
       const r = await fetch('/api/my-artists');
       const my = await r.json();
       artistPop = my.popMap || {};
